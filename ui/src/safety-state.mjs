@@ -30,6 +30,19 @@ export function networkState(status, now = Date.now()) {
   return { mode: "unknown", label: "外网状态待确认" };
 }
 
+export function isolationSummary(status, now = Date.now()) {
+  const { gate, report } = status?.safety || {};
+  const checks = report?.checks?.filter(check => check.critical) || [];
+  const current = Boolean(report?.id && gate?.report?.id === report.id &&
+    report.run_id === gate.run_id && report.configuration === gate.configuration &&
+    networkState(status, now).mode === "open");
+  return {
+    current,
+    passed: checks.filter(check => check.state === "passed").length,
+    total: checks.length,
+  };
+}
+
 export function canonicalExitPolicy(value = {}) {
   return {
     mode: value.mode || "dynamic",

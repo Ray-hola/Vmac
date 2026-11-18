@@ -34,6 +34,7 @@ export function NativeGuestHome({ setup = null }) {
   const [status, setStatus] = useState(null);
   const [page, setPage] = useState("lifecycle");
   const [vmTab, setVMTab] = useState("space");
+  const [checksTab, setChecksTab] = useState("isolation");
   const [settings, setSettings] = useState(null);
   const [section, setSection] = useState("");
   const [profile, setProfile] = useState("");
@@ -91,7 +92,7 @@ export function NativeGuestHome({ setup = null }) {
     } catch (failure) { setError(failure.message); }
     finally { opened.current = false; setRequest(false); }
   }
-  async function navigate(destination) {
+  async function navigate(destination, checksSection) {
     if (!(destination in titles) || opened.current) return;
     if (proxyDirty.current && destination !== "proxy") {
       if (!await confirm({ title: "离开代理管理？", body: "代理更改尚未应用。", confirm: "离开页面" })) {
@@ -102,6 +103,7 @@ export function NativeGuestHome({ setup = null }) {
     }
     automatic.current = false;
     setError("");
+    if (destination === "checks" && checksSection) setChecksTab(checksSection);
     choosePage(destination);
     if (destination === "desktop" && !setupActive.current && latest.current?.ready) await openDesktop(destination);
   }
@@ -320,12 +322,13 @@ export function NativeGuestHome({ setup = null }) {
               <h2>还没有安装 macOS</h2><p>完成安装后，这里会显示磁盘容量、扩容和缓存清理。</p>
               <button className="primary" onClick={() => navigate("desktop")}>打开安装向导</button>
             </section>}
-            <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} onStart={() => lifecycleAction.current?.("start")} running={status.vm_running} />
+            {installed && <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} onStart={() => lifecycleAction.current?.("start")} running={status.vm_running} />}
           </> : <VMProfiles status={status} onConfirm={confirm} />}
         </div>
-      </> : page === "checks" ? <ChecksPage status={status} protection={protection} onConfirm={confirm} onSettings={openSettings} onOpenPage={openGuestPage} />
+      </> : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
+          onConfirm={confirm} onSettings={openSettings} onOpenPage={openGuestPage} onInstall={setup && !installed ? () => navigate("desktop") : undefined} />
       : <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}
-          onApplied={() => pollNow.current?.()} onChecks={() => navigate("checks")} protection={protection} />}
+          onApplied={() => pollNow.current?.()} onChecks={() => navigate("checks", "gateway")} protection={protection} />}
     </div>}
     {section && status && settings && <SettingsPanel current={settings} status={status} initialSection={section}
       onClose={() => setSection("")} onConfirm={confirm} onSaved={async () => setSettings(await api("/settings"))} />}

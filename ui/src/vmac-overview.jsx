@@ -1,5 +1,6 @@
 import React from "react";
 import { ArrowRight, Check, HardDrive, LoaderCircle, Monitor, Network, Play, Power, RotateCw, ShieldCheck, X } from "lucide-react";
+import { isolationSummary } from "./safety-state.mjs";
 import { gib } from "./vmac-ui";
 
 const steps = [["vm", "启动虚拟机"], ["guest", "连接客机"], ["network", "网络检查"], ["desktop", "打开桌面"]];
@@ -22,16 +23,11 @@ function stepStates(status, network, phase) {
   };
 }
 
-function criticalChecks(status) {
-  const checks = status.safety?.report?.checks?.filter(check => check.critical) || [];
-  return { passed: checks.filter(check => check.state === "passed").length, total: checks.length };
-}
-
 export function GuestOverview({ status, network, request, disk, onStart, onRestart, onStop, onOpen, onNavigate }) {
   const phase = guestPhase(status, request);
   const job = status.job || {};
   const states = stepStates(status, network, phase);
-  const checks = criticalChecks(status);
+  const checks = isolationSummary(status);
   const busyTitle = { start: "正在启动客机", restart: "正在重启客机", stop: "正在停止客机" }[job.kind] || "正在处理客机操作";
   const copy = {
     busy: [busyTitle, job.message || "正在提交操作…"],
@@ -42,11 +38,11 @@ export function GuestOverview({ status, network, request, disk, onStart, onResta
   }[phase];
   const tiles = [
     { id: "proxy", icon: Network, label: "网络出口", value: network.label,
-      detail: status.location?.ip ? `${status.location.ip} · ${[status.location.country, status.location.city].filter(Boolean).join(" ")}` : "尚未取得出口信息",
+      detail: status.location?.ip ? `${network.mode === "open" ? "" : "上次检测 · "}${[status.location.ip, status.location.country, status.location.city].filter(Boolean).join(" · ")}` : "尚未取得出口信息",
       tone: network.mode === "open" ? "ok" : network.mode === "checking" ? "busy" : "idle" },
-    { id: "checks", icon: ShieldCheck, label: "环境检测", value: checks.total ? `${checks.passed} / ${checks.total} 关键项通过` : "尚无检测记录",
+    { id: "checks", icon: ShieldCheck, label: "环境检测", value: checks.total ? `${checks.current ? "" : "上次 · "}${checks.passed} / ${checks.total} 关键项通过` : "尚无检测记录",
       detail: status.safety?.report?.created_at ? `检测于 ${new Date(status.safety.report.created_at).toLocaleString("zh-CN", { hour12: false })}` : "查看隔离报告和网络连通",
-      tone: checks.total && checks.passed === checks.total ? "ok" : checks.total ? "warn" : "idle" },
+      tone: checks.current && checks.passed === checks.total && checks.total ? "ok" : checks.total ? "warn" : "idle" },
     { id: "space", icon: HardDrive, label: "虚拟磁盘", value: disk ? `${gib(disk.bytes)} GiB` : status.guest_system === "macos" ? "正在读取…" : "尚未安装",
       detail: "扩大磁盘、清理缓存或切换客机", tone: "idle" },
   ];

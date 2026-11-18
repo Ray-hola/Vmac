@@ -360,7 +360,7 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, onChecks,
           <span>独立端口 {proxy.port}</span>
           {proxy.active && status.location && (
             <span title="联网是否放行以环境检测为准">
-              出口 {status.location.ip} · {status.location.country} {status.location.city}
+              最近检测出口 {status.location.ip} · {status.location.country} {status.location.city}
             </span>
           )}
           {protection?.state && (

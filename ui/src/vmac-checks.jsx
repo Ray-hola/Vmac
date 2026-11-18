@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Activity, Globe2, LoaderCircle, Play, ShieldCheck, Square } from "lucide-react";
 import { api } from "./api";
 import { SafetyPanel } from "./safety";
+import { isolationSummary } from "./safety-state.mjs";
 import { Segmented, StatusChip } from "./vmac-ui";
 
 const protectionLabel = {
@@ -296,19 +297,13 @@ export function SiteChecks({ protection }) {
   </section>;
 }
 
-function criticalSummary(status) {
-  const checks = status.safety?.report?.checks?.filter(check => check.critical) || [];
-  return { passed: checks.filter(check => check.state === "passed").length, total: checks.length };
-}
-
-export function ChecksPage({ status, protection, onConfirm, onSettings, onOpenPage }) {
-  const [tab, setTab] = useState("isolation");
-  const critical = criticalSummary(status);
+export function ChecksPage({ status, protection, tab, onTabChange, onConfirm, onSettings, onOpenPage, onInstall }) {
+  const critical = isolationSummary(status);
   const location = status.location;
   const tiles = [
     { label: "网关保护", value: protectionText(protection), detail: protection.until ? `有效至 ${stamp(protection.until)}` : protection.reason || "正在读取", tone: protectionTone[protection.state] || "idle" },
-    { label: "隔离检查", value: critical.total ? `${critical.passed} / ${critical.total} 通过` : "尚无记录", detail: status.safety?.report?.created_at ? `检测于 ${stamp(status.safety.report.created_at)}` : "启动客机后自动检测", tone: critical.total && critical.passed === critical.total ? "ok" : critical.total ? "warn" : "idle" },
-    { label: "当前出口", value: location?.ip || "未检测", detail: location ? [location.country, location.city].filter(Boolean).join(" ") || "地区未知" : "经当前代理节点查询", tone: location?.ip ? "ok" : "idle" },
+    { label: "隔离检查", value: critical.total ? `${critical.current ? "" : "上次 · "}${critical.passed} / ${critical.total} 通过` : "尚无记录", detail: status.safety?.report?.created_at ? `检测于 ${stamp(status.safety.report.created_at)}` : "启动客机后自动检测", tone: critical.current && critical.total && critical.passed === critical.total ? "ok" : critical.total ? "warn" : "idle" },
+    { label: protection.lease || !location?.ip ? "当前出口" : "上次检测出口", value: location?.ip || "未检测", detail: location ? [location.country, location.city].filter(Boolean).join(" ") || "地区未知" : "经当前代理节点查询", tone: location?.ip && protection.lease ? "ok" : "idle" },
   ];
   return <div className="vm-checks">
     <div className="vm-stats">
@@ -316,10 +311,12 @@ export function ChecksPage({ status, protection, onConfirm, onSettings, onOpenPa
         <small><ShieldCheck size={13} />{tile.label}</small><strong>{tile.value}</strong><span>{tile.detail}</span>
       </div>)}
     </div>
-    <Segmented label="检测类别" value={tab} onChange={setTab}
+    <Segmented label="检测类别" value={tab} onChange={onTabChange}
       items={[["isolation", "隔离报告"], ["gateway", "网关检测"], ["claude", "Claude 检测"], ["sites", "网络连通"]]} />
     {/* Panels stay mounted so a running probe batch survives switching tabs. */}
-    <div className="vm-tabpanel" hidden={tab !== "isolation"}><SafetyPanel inline status={status} onConfirm={onConfirm} onSettings={onSettings} onOpenPage={onOpenPage} /></div>
+    <div className="vm-tabpanel" hidden={tab !== "isolation"}>{onInstall
+      ? <section className="vm-card vm-empty"><h2>还没有安装 macOS</h2><p>安装并启动客机后，可以运行隔离检查。</p><button className="primary" onClick={onInstall}>打开安装向导</button></section>
+      : <SafetyPanel inline status={status} onConfirm={onConfirm} onSettings={onSettings} onOpenPage={onOpenPage} />}</div>
     <div className="vm-tabpanel" hidden={tab !== "gateway"}><NetworkChecks protection={protection} /></div>
     <div className="vm-tabpanel" hidden={tab !== "claude"}><ClaudeChecks protection={protection} /></div>
     <div className="vm-tabpanel" hidden={tab !== "sites"}><SiteChecks protection={protection} /></div>
