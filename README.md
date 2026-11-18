@@ -10,7 +10,7 @@ VMac 是 Apple Silicon Mac 上的 macOS 虚拟机工作台。客机画面通过 
 
 ## 构建
 
-使用 Apple Silicon Mac，准备 Xcode Command Line Tools、Go（版本见 [go.mod](go.mod)）、Node.js 和 Python 3。客机组件构建会下载固定版本的开源依赖，可查看 [构建脚本](scripts/build-vmac.sh)。
+使用 Apple Silicon Mac，准备 Xcode Command Line Tools、Go（版本见 [go.mod](go.mod)）、Node.js 和 Python 3。SSHFS 的构建还需要与 [依赖锁定文件](scripts/guest-os/macos-sshfs-dependencies.json) 一致的 Homebrew GLib、gettext 和 PCRE2。其余构建步骤见 [构建脚本](scripts/build-vmac.sh)。
 
 ```sh
 bash scripts/build-vmac.sh

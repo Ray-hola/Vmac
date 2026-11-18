@@ -47,7 +47,7 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 			if errors.As(err, &ae) {
 				reply.Error = ae
 			} else {
-				reply.Error = &workbench.AgentError{Code: "operation_failed", Message: "Cage could not complete the operation. Inspect diagnostics.", NextAction: "doctor"}
+				reply.Error = &workbench.AgentError{Code: "operation_failed", Message: "VMac could not complete the operation. Inspect diagnostics.", NextAction: "doctor"}
 			}
 			if reply.Error.Code == "invalid_input" || reply.Error.Code == "unknown_operation" {
 				code = 2
@@ -86,9 +86,13 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 		}
 		requestPath, args = args[0], args[1:]
 	}
-	flags := flag.NewFlagSet("cage agent", flag.ContinueOnError)
+	flags := flag.NewFlagSet("vmac agent", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	config := flags.String("config", os.Getenv(cage.ConfigEnv), "")
+	configuredPath := os.Getenv(cage.ConfigEnv)
+	if vmacPath := os.Getenv("VMAC_CONFIG"); version.MacOSGuestOnly && vmacPath != "" {
+		configuredPath = vmacPath
+	}
+	config := flags.String("config", configuredPath, "")
 	input := flags.String("input", "", "")
 	output := flags.String("output", "", "")
 	wait := flags.Duration("wait", 0, "")
@@ -101,7 +105,7 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 	contentType := flags.String("content-type", "application/json", "")
 	_ = flags.Bool("json", true, "")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
-		return bad("Usage: cage agent capabilities|doctor|init|service.start|host.inspect|call NAME|request METHOD /api/PATH|socket /api/PATH|routes|job ID|diagnostics [--config PATH] [--input -|FILE] [--wait 5m] [--output PATH]")
+		return bad("Usage: vmac agent capabilities|doctor|init|service.start|host.inspect|call NAME|request METHOD /api/PATH|socket /api/PATH|routes|job ID|diagnostics [--config PATH] [--input -|FILE] [--wait 5m] [--output PATH]")
 	}
 	if *wait < 0 || *wait > 24*time.Hour {
 		return bad("--wait must be between 0 and 24h.")
@@ -126,9 +130,12 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 		if err != nil {
 			return finish(nil, err)
 		}
-		*config = filepath.Join(home, ".claude-cage", "config.json")
-		if clientOnly {
+		if version.MacOSGuestOnly {
+			*config = filepath.Join(home, ".vmac", "config.json")
+		} else if clientOnly {
 			*config = filepath.Join(home, ".claude-cage", "client", "config.json")
+		} else {
+			*config = filepath.Join(home, ".claude-cage", "config.json")
 		}
 	}
 	path, err := filepath.Abs(*config)
@@ -143,7 +150,7 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 		response, err := workbench.AgentRequest(ctx, path, workbench.AgentTarget{Scope: *scope, Connection: *connection}, "GET", "/api/agent/routes", nil, "", "")
 		return finish(response.Data, err)
 	case "help", "--help", "capabilities":
-		return finish(map[string]any{"platform": runtime.GOOS, "arch": runtime.GOARCH, "commands": []string{"capabilities", "doctor", "init", "service.start", "host.inspect", "call NAME", "request METHOD /api/PATH", "socket /api/PATH", "routes", "job ID", "diagnostics"}, "operations": workbench.AgentOperations(), "routes": "agent routes reads the actual registered routes from the chosen live listener", "exit_codes": map[string]int{"completed_or_accepted": 0, "operation_failed": 1, "invalid_input": 2, "user_action_required": 3, "wait_timeout": 4}, "guide": "https://claude-cage.com/docs/agent/", "scope": "local: owning workload; desktop: client configuration; selected: explicit desktop connection generation; client: lightweight client listener", "request": map[string]any{"methods": []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}, "path": "relative /api/ endpoint from the UI", "binary": "--input FILE --content-type application/octet-stream; --output ABSOLUTE_NEW_FILE", "native": "call native.submit --scope desktop; request GET /api/agent/native/ID --scope desktop; use the same native action and connection_id as the open window"}, "job_retention": "only the latest job; query promptly and never resubmit an unknown mutation automatically"}, nil)
+		return finish(map[string]any{"platform": runtime.GOOS, "arch": runtime.GOARCH, "commands": []string{"capabilities", "doctor", "init", "service.start", "host.inspect", "call NAME", "request METHOD /api/PATH", "socket /api/PATH", "routes", "job ID", "diagnostics"}, "operations": workbench.AgentOperations(), "routes": "agent routes reads the actual registered routes from the chosen live listener", "exit_codes": map[string]int{"completed_or_accepted": 0, "operation_failed": 1, "invalid_input": 2, "user_action_required": 3, "wait_timeout": 4}, "guide": "https://github.com/Ray-hola/Vmac", "scope": "local: owning workload; desktop: client configuration; selected: explicit desktop connection generation; client: lightweight client listener", "request": map[string]any{"methods": []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}, "path": "relative /api/ endpoint from the UI", "binary": "--input FILE --content-type application/octet-stream; --output ABSOLUTE_NEW_FILE", "native": "call native.submit --scope desktop; request GET /api/agent/native/ID --scope desktop; use the same native action and connection_id as the open window"}, "job_retention": "only the latest job; query promptly and never resubmit an unknown mutation automatically"}, nil)
 	case "init":
 		if _, err := os.Stat(path); err == nil {
 			if _, err := cage.Load(path); err != nil {

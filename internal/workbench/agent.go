@@ -239,7 +239,7 @@ func agentCheckController(c *controllerClient, configPath string) error {
 func agentConnect(ctx context.Context, configPath string) (*controllerClient, error) {
 	c, err := connectController(filepath.Dir(configPath))
 	if err != nil {
-		return nil, &AgentError{Code: "service_unavailable", Message: "The local Cage controller is unavailable. Run service.start or doctor.", NextAction: "service.start"}
+		return nil, &AgentError{Code: "service_unavailable", Message: "The local VMac controller is unavailable. Run service.start or doctor.", NextAction: "service.start"}
 	}
 	fail := func(err error) (*controllerClient, error) { c.close(); return nil, err }
 	if err := agentCheckController(c, configPath); err != nil {
