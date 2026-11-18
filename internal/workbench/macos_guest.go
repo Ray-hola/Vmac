@@ -19,6 +19,7 @@ import (
 	"github.com/Ray-hola/Vmac/internal/cage"
 	"github.com/Ray-hola/Vmac/internal/guestos"
 	"github.com/Ray-hola/Vmac/internal/host"
+	"github.com/Ray-hola/Vmac/internal/version"
 )
 
 // Only the trusted local workbench can operate the native Mac. Each route
@@ -143,6 +144,7 @@ except (ValueError, AttributeError):
 ' "$receipt"`
 
 var errMacOSComponentUpdate = errors.New("虚拟 Mac 的客机组件与当前 VMac 版本不一致，浏览器、剪贴板和声音可能无法连接。请保存工作后在环境设置中同步环境组件；系统磁盘、账户和项目数据会保留。")
+var errMacOSAutomaticComponentSync = errors.New("客机组件自动同步失败，请在环境设置中重试")
 
 // macOSComponentsDrifted reports whether a receipt read from the guest belongs
 // to a different component kit. A missing or unreadable receipt also requires
@@ -161,29 +163,59 @@ func macOSComponentsDrifted(receipt []byte, required cage.GuestManifest) bool {
 // checkMacOSComponents runs once per connection. Without it a guest left on
 // older components looks ready while its services fail, and every client
 // retries those failures instead of offering the component update.
-func (s *Server) checkMacOSComponents() {
+func (s *Server) checkMacOSComponents(ctx context.Context) error {
 	kit, system := s.nativeComponentKit()
 	required, err := guestos.RequiredNativeComponents(kit, system)
 	if err != nil {
-		return
+		return err
 	}
-	ctx, cancel := context.WithTimeout(s.lifetimeContext(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	receipt, err := s.guest(ctx, macOSComponentReceiptProbe)
 	if err != nil {
-		return
+		return fmt.Errorf("无法读取原客机的组件版本：%w", err)
 	}
 	drifted := macOSComponentsDrifted(receipt, required.GuestManifest)
 	s.mu.Lock()
 	s.macComponentsChecked = true
 	s.guestUpdateRequired = drifted
 	s.mu.Unlock()
+	return nil
 }
 
 func (s *Server) attachMacOSGuest() error {
+	return s.attachMacOSGuestForBoot(false)
+}
+
+func (s *Server) attachMacOSGuestForBoot(syncComponents bool) error {
 	ctx, cancel := s.controlContext()
-	defer cancel()
 	err := s.checkMacOSGuest(ctx)
+	cancel()
+	s.mu.Lock()
+	checkComponents := err == nil && !s.macComponentsChecked
+	s.mu.Unlock()
+	setupPending := s.macSetupPending()
+	if checkComponents && !setupPending {
+		if checkErr := s.checkMacOSComponents(s.operationContext()); syncComponents && checkErr != nil {
+			s.mu.Lock()
+			s.guestUpdateRequired = true
+			s.mu.Unlock()
+			err = fmt.Errorf("%w。%w", errMacOSAutomaticComponentSync, checkErr)
+		}
+	}
+	if err == nil && syncComponents && !setupPending {
+		s.mu.Lock()
+		needsSync := s.macComponentsChecked && s.guestUpdateRequired
+		s.mu.Unlock()
+		if needsSync {
+			if syncErr := s.syncNativeComponents(false); syncErr != nil {
+				err = fmt.Errorf("%w。%w", errMacOSAutomaticComponentSync, syncErr)
+			}
+		}
+	}
+	// Component maintenance can outlast the initial SSH timeout.
+	ctx, cancel = s.controlContext()
+	defer cancel()
 	if err == nil {
 		err = s.syncNativeBrowserProfile(ctx)
 	}
@@ -191,14 +223,9 @@ func (s *Server) attachMacOSGuest() error {
 	if err != nil {
 		s.macComponentsChecked = false
 	}
-	checkComponents := err == nil && !s.macComponentsChecked
-	s.mu.Unlock()
-	if checkComponents && !s.macSetupPending() {
-		s.checkMacOSComponents()
-	}
-	s.mu.Lock()
 	newlyReady := !s.ready && err == nil
-	checkAfterReconnect := newlyReady && !s.closing && !s.networkPaused && !s.jobs.snapshot().Running
+	checkAfterReconnect := newlyReady && !s.closing && !s.networkPaused && !s.jobs.snapshot().Running &&
+		!(version.MacOSGuestOnly && s.guestUpdateRequired)
 	s.ready = err == nil
 	s.guestUpdateError = ""
 	if err != nil {
@@ -241,7 +268,8 @@ func (s *Server) startMacOSGuest() error {
 	if err := s.syncMacGuestPassword(s.operationContext()); err != nil {
 		return err
 	}
-	err := s.attachMacOSGuest()
+	syncComponents := version.MacOSGuestOnly && starting
+	err := s.attachMacOSGuestForBoot(syncComponents)
 	if starting && macOSBootConnectionPending(err) {
 		ctx, cancel := context.WithTimeout(s.operationContext(), 60*time.Second)
 		defer cancel()
@@ -256,7 +284,7 @@ func (s *Server) startMacOSGuest() error {
 				}
 				return err
 			case <-retry.C:
-				err = s.attachMacOSGuest()
+				err = s.attachMacOSGuestForBoot(syncComponents)
 			}
 		}
 	}
@@ -268,6 +296,9 @@ func (s *Server) startMacOSGuest() error {
 
 // The guest browser bridge may come up after the SSH service.
 func macOSBootConnectionPending(err error) bool {
+	if errors.Is(err, errMacOSAutomaticComponentSync) {
+		return false
+	}
 	return errors.Is(err, errMacOSGuestSSH) || errors.Is(err, errGuestBrowserDisconnected) || errors.Is(err, context.DeadlineExceeded)
 }
 
@@ -329,6 +360,7 @@ func (s *Server) syncMacOSRegion(ctx context.Context, cfg cage.Config) error {
 func (s *Server) stopMacOSGuest() error {
 	s.mu.Lock()
 	s.ready = false
+	s.macComponentsChecked = false
 	s.macSetupProjectsChecked = time.Time{}
 	s.macSetupSharingConfirmed = false
 	s.macSetupSharingAttempt = time.Time{}

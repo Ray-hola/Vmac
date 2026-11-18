@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"net/netip"
-	"net/url"
 	"testing"
 	"time"
 )
@@ -59,15 +58,27 @@ func TestManagedUDPUsesOnlyAuthenticatedLoopbackRelay(t *testing.T) {
 		_, _ = c.Read(buffer)
 	}()
 
-	upstream := &url.URL{Scheme: "socks5", Host: tcp.Addr().String(), User: url.UserPassword("cage", "p")}
-	egress := &Egress{udp: true, upstream: upstream, connect: &net.Dialer{}}
+	cfg := DefaultConfig()
+	cfg.ProxyURL = "socks5://cage:p@" + tcp.Addr().String()
+	gate, err := NewEgressGate(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close("test complete")
+	gate.raw.udp = true
+	const destination = "1.1.1.1:53"
+	if c, err := gate.DialContext(t.Context(), "udp", destination); err == nil {
+		_ = c.Close()
+		t.Fatal("closed gate accepted UDP")
+	}
+	fixtureGrant(t, gate)
 	for _, raw := range []string{"127.0.0.1:53", "192.168.1.1:53", "[2001:4860:4860::8888]:53"} {
-		if c, err := egress.dialUDP(t.Context(), netip.MustParseAddrPort(raw)); err == nil {
+		if c, err := gate.DialContext(t.Context(), "udp", raw); err == nil {
 			c.Close()
 			t.Fatalf("private or unsupported destination accepted: %s", raw)
 		}
 	}
-	c, err := egress.dialUDP(t.Context(), netip.MustParseAddrPort("1.1.1.1:53"))
+	c, err := gate.DialContext(t.Context(), "udp", destination)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,5 +93,12 @@ func TestManagedUDPUsesOnlyAuthenticatedLoopbackRelay(t *testing.T) {
 	}
 	if got := <-probe; !bytes.Equal(got, want) {
 		t.Fatalf("unexpected SOCKS header: %v", got)
+	}
+	if counts := gate.Status().Counters; counts.UDPRelayed != 1 || counts.UDPReplies != 1 {
+		t.Fatalf("relay counted an invalid datagram or missed a valid one: %+v", counts)
+	}
+	gate.Close("test revocation")
+	if _, err := c.Write([]byte("q")); err == nil || gate.Allows("udp", netip.MustParseAddrPort(destination)) {
+		t.Fatal("UDP still available after revocation")
 	}
 }

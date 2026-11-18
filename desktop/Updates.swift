@@ -101,6 +101,24 @@ enum CageProfile {
     }
 }
 
+struct CageUpdateProduct {
+    let bundleID: String
+    let name: String
+    let backend: String
+    let versionKey: String
+
+    static let cage = CageUpdateProduct(bundleID: cageUpdateBundleID, name: "Cage", backend: "cage", versionKey: "CageVersion")
+    static let vmac = CageUpdateProduct(bundleID: CageProfile.vmacBundleID, name: "VMac", backend: "vmac", versionKey: "CFBundleShortVersionString")
+
+    static func find(_ bundleID: String?) -> Self? {
+        switch bundleID {
+        case cage.bundleID: return .cage
+        case vmac.bundleID: return .vmac
+        default: return nil
+        }
+    }
+}
+
 final class CageUpdateValidation {
     private let lock = NSLock()
     private let completion = DispatchGroup()
@@ -234,11 +252,11 @@ enum CageUpdateFiles {
         guard process.terminationStatus == 0, data.count <= 1024 * 1024 else { throw CageUpdateError("本机更新验证未完成，请重试") }
         return data
     }
-    static func signingInfo(_ url: URL, bundle: Bool, expectedTeam: String? = nil) throws -> String {
+    static func signingInfo(_ url: URL, bundle: Bool, expectedTeam: String? = nil, product: CageUpdateProduct = .cage) throws -> String {
         var code: SecStaticCode?
         guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code else { throw CageUpdateError("无法读取应用签名") }
         var requirement: SecRequirement?
-        let identity = bundle ? " and identifier \"\(cageUpdateBundleID)\"" : ""
+        let identity = bundle ? " and identifier \"\(product.bundleID)\"" : ""
         let team = expectedTeam.map { " and certificate leaf[subject.OU] = \"\($0)\"" } ?? ""
         let expression = "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists\(identity)\(team)"
         guard SecRequirementCreateWithString(expression as CFString, [], &requirement) == errSecSuccess else { throw CageUpdateError("无法建立发布者签名要求") }
@@ -259,23 +277,23 @@ enum CageUpdateFiles {
         #endif
         _ = try run("/usr/bin/lipo", [executable.path, "-verify_arch", architecture], validation: validation)
     }
-    static func verifyApp(_ url: URL, version: String, team: String, gatekeeper: Bool = true, validation: CageUpdateValidation? = nil) throws {
+    static func verifyApp(_ url: URL, version: String, team: String, gatekeeper: Bool = true, validation: CageUpdateValidation? = nil, product: CageUpdateProduct = .cage) throws {
         try validation?.checkCancellation()
         let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-        guard values.isDirectory == true, values.isSymbolicLink != true, url.pathExtension == "app" else { throw CageUpdateError("更新包中缺少有效的 Cage.app") }
+        guard values.isDirectory == true, values.isSymbolicLink != true, url.pathExtension == "app" else { throw CageUpdateError("更新包中缺少有效的 \(product.name).app") }
         let plist = url.appendingPathComponent("Contents/Info.plist")
         guard let info = try PropertyListSerialization.propertyList(from: Data(contentsOf: plist), format: nil) as? [String: Any],
-              info["CFBundleIdentifier"] as? String == cageUpdateBundleID,
-              info["CageVersion"] as? String == version,
-              info["CFBundleExecutable"] as? String == "VMac" else { throw CageUpdateError("更新包的应用身份或版本不匹配") }
+              info["CFBundleIdentifier"] as? String == product.bundleID,
+              info[product.versionKey] as? String == version,
+              info["CFBundleExecutable"] as? String == product.name else { throw CageUpdateError("更新包的应用身份或版本不匹配") }
         if let minimum = info["LSMinimumSystemVersion"] as? String {
             let parts = minimum.split(separator: ".").compactMap { Int($0) }
             guard minimum.range(of: "^[0-9]+(\\.[0-9]+){0,2}$", options: .regularExpression) != nil,
                   (1...3).contains(parts.count), ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: parts[0], minorVersion: parts.count > 1 ? parts[1] : 0, patchVersion: parts.count > 2 ? parts[2] : 0)) else { throw CageUpdateError("此更新需要更高版本的 macOS") }
         }
-        _ = try signingInfo(url, bundle: true, expectedTeam: team)
-        try verifyArchitecture(url.appendingPathComponent("Contents/MacOS/Cage"), validation: validation)
-        for name in ["cage", "mihomo", "CageUpdateInstaller"] {
+        _ = try signingInfo(url, bundle: true, expectedTeam: team, product: product)
+        try verifyArchitecture(url.appendingPathComponent("Contents/MacOS/\(product.name)"), validation: validation)
+        for name in [product.backend, "mihomo", "CageUpdateInstaller"] {
             let nested = url.appendingPathComponent("Contents/Resources/\(name)")
             guard FileManager.default.fileExists(atPath: nested.path) else { throw CageUpdateError("更新包缺少必要的应用组件") }
             _ = try signingInfo(nested, bundle: false, expectedTeam: team)
@@ -309,16 +327,16 @@ enum CageUpdateFiles {
         try validation?.checkCancellation()
         return try body(mount)
     }
-    static func extract(archive: URL, hash: String, version: String, team: String, directory: URL, validation: CageUpdateValidation? = nil) throws -> URL {
+    static func extract(archive: URL, hash: String, version: String, team: String, directory: URL, validation: CageUpdateValidation? = nil, product: CageUpdateProduct = .cage) throws -> URL {
         guard try digest(archive, validation: validation) == hash else { throw CageUpdateError("安装包下载后发生变化，请重新下载") }
         return try withMountedImage(archive: archive, directory: directory, validation: validation) { mount in
-            let source = mount.appendingPathComponent("Cage.app", isDirectory: true)
+            let source = mount.appendingPathComponent(product.name + ".app", isDirectory: true)
             try validateTree(source, validation: validation)
-            try verifyApp(source, version: version, team: team, validation: validation)
-            let target = directory.appendingPathComponent("Cage.app", isDirectory: true)
+            try verifyApp(source, version: version, team: team, validation: validation, product: product)
+            let target = directory.appendingPathComponent(product.name + ".app", isDirectory: true)
             _ = try run("/usr/bin/ditto", [source.path, target.path], validation: validation)
             try validateTree(target, validation: validation)
-            try verifyApp(target, version: version, team: team, validation: validation)
+            try verifyApp(target, version: version, team: team, validation: validation, product: product)
             return target
         }
     }
@@ -327,6 +345,8 @@ enum CageUpdateFiles {
 /// Owns update state for one native window. All state transitions run on main.
 final class CageAppUpdater {
     private let bundleURL: URL
+    private let product: CageUpdateProduct
+    private let automaticInstallation: Bool
     private let root: URL
     private let onChange: ([String: Any]) -> Void
     private let quit: () -> Void
@@ -345,9 +365,12 @@ final class CageAppUpdater {
 
     init(bundleURL: URL, onChange: @escaping ([String: Any]) -> Void, quit: @escaping () -> Void, reconnect: @escaping () -> Void) {
         self.bundleURL = bundleURL.resolvingSymlinksInPath()
+        let bundle = Bundle(url: bundleURL)
+        product = CageUpdateProduct.find(bundle?.bundleIdentifier) ?? .cage
+        automaticInstallation = bundle?.bundleIdentifier != CageProfile.vmacBundleID || bundle?.object(forInfoDictionaryKey: "VMacSignedUpdate") as? Bool == true
         self.onChange = onChange; self.quit = quit; self.reconnect = reconnect
         root = CageProfile.configURL().deletingLastPathComponent().appendingPathComponent("updates", isDirectory: true)
-        let version = Bundle(url: bundleURL)?.object(forInfoDictionaryKey: "CageVersion") as? String ?? "开发版本"
+        let version = bundle?.object(forInfoDictionaryKey: product.versionKey) as? String ?? "开发版本"
         state = ["phase": "idle", "currentVersion": version, "message": ""]
         if let data = try? Data(contentsOf: root.appendingPathComponent("last-result.json")), data.count < 16384,
            let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -390,6 +413,7 @@ final class CageAppUpdater {
         case "status": break
         case "check": if !busy && worker == nil && validationTask == nil && installer == nil && prepared == nil { startDownload(checkOnly: true) }
         case "install":
+            if !automaticInstallation || state["phase"] as? String == "manual" { return state }
             if !busy && worker == nil && validationTask == nil && installer == nil { if prepared != nil { beginInstallation() } else { startDownload(checkOnly: false) } }
         case "cancel":
             if installer == nil && state["phase"] as? String != "installing" { generation += 1; if let worker { CageUpdateFiles.stop(worker) }; validationTask?.cancel(); change(["phase": prepared == nil ? "available" : "ready", "message": "更新已暂停，可稍后继续", "retryable": true]) }
@@ -463,6 +487,10 @@ final class CageAppUpdater {
                     guard let value = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
                     last = value
                     var visible = value; visible.removeValue(forKey: "archivePath"); visible.removeValue(forKey: "sha256")
+                    if !self.automaticInstallation && visible["phase"] as? String == "available" {
+                        visible["phase"] = "manual"
+                        visible["message"] = "请手动安装带发布者签名的 VMac 以启用一键更新。"
+                    }
                     DispatchQueue.main.async { if self.generation == operation { self.change(visible) } }
                 }
             }
@@ -483,7 +511,7 @@ final class CageAppUpdater {
         guard let path = result["archivePath"] as? String, let hash = result["sha256"] as? String,
               let version = result["latestVersion"] as? String, hash.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else { failure("下载进程返回了无效安装包"); return }
         let archive = URL(fileURLWithPath: path).resolvingSymlinksInPath()
-        guard archive.path.hasPrefix(root.resolvingSymlinksInPath().path + "/download-"), archive.lastPathComponent == "Cage.dmg" else { failure("安装包路径不属于本次私有下载"); return }
+        guard archive.path.hasPrefix(root.resolvingSymlinksInPath().path + "/download-"), archive.lastPathComponent == product.name + ".dmg" else { failure("安装包路径不属于本次私有下载"); return }
         change(["phase": "verifying", "message": "正在验证 Apple 签名和应用内容", "retryable": false])
         let task = CageUpdateValidation()
         validationTask = task
@@ -495,9 +523,9 @@ final class CageAppUpdater {
             let directory = self.root.appendingPathComponent("verified-" + UUID().uuidString, isDirectory: true)
             do {
                 try task.checkCancellation()
-                let team = try CageUpdateFiles.signingInfo(self.bundleURL, bundle: true)
+                let team = try CageUpdateFiles.signingInfo(self.bundleURL, bundle: true, product: self.product)
                 try CageUpdateFiles.privateDirectory(directory)
-                let app = try CageUpdateFiles.extract(archive: archive, hash: hash, version: version, team: team, directory: directory, validation: task)
+                let app = try CageUpdateFiles.extract(archive: archive, hash: hash, version: version, team: team, directory: directory, validation: task, product: self.product)
                 try task.checkCancellation()
                 try? FileManager.default.removeItem(at: archive.deletingLastPathComponent())
                 DispatchQueue.main.async {
@@ -526,7 +554,7 @@ final class CageAppUpdater {
             }
             do {
                 guard !self.bundleURL.path.hasPrefix("/Volumes/"), self.bundleURL.pathExtension == "app" else { throw CageUpdateError("请先将 VMac 安装到应用程序目录，再自动更新") }
-                try CageUpdateFiles.verifyApp(prepared.app, version: prepared.version, team: prepared.team, validation: task)
+                try CageUpdateFiles.verifyApp(prepared.app, version: prepared.version, team: prepared.team, validation: task, product: self.product)
                 let helper = prepared.directory.appendingPathComponent("CageUpdateInstaller")
                 let originalHelper = self.bundleURL.appendingPathComponent("Contents/Resources/CageUpdateInstaller")
                 try? FileManager.default.removeItem(at: helper)

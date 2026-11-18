@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -28,6 +29,8 @@ var ErrGateClosed = errors.New("Cage 外网未放行，请在工作台完成关�
 type GateCounters struct {
 	TCPDenied     uint64 `json:"tcp_denied"`
 	UDPDenied     uint64 `json:"udp_denied"`
+	UDPRelayed    uint64 `json:"udp_relayed"`
+	UDPReplies    uint64 `json:"udp_replies"`
 	IPv6Denied    uint64 `json:"ipv6_denied"`
 	PrivateDenied uint64 `json:"private_denied"`
 	DNSDenied     uint64 `json:"dns_denied"`
@@ -69,6 +72,7 @@ type EgressGate struct {
 	timer                             *time.Timer
 	connections                       map[*gateConn]struct{}
 	probeRequests                     int
+	udpRelayed, udpReplies            atomic.Uint64
 }
 
 func NewEgressGate(cfg Config) (*EgressGate, error) {
@@ -140,6 +144,8 @@ func (g *EgressGate) Status() GateStatus {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	s := g.state
+	s.Counters.UDPRelayed = g.udpRelayed.Load()
+	s.Counters.UDPReplies = g.udpReplies.Load()
 	s.Epoch = g.epoch
 	s.PolicyVerified = g.raw.Allows("tcp", netip.MustParseAddrPort("1.1.1.1:443")) &&
 		g.raw.Allows("udp", netip.MustParseAddrPort("1.1.1.1:3478")) == g.raw.udp &&
@@ -339,7 +345,8 @@ func (g *EgressGate) track(c net.Conn, epoch uint64) (net.Conn, error) {
 		_ = c.Close()
 		return nil, ErrGateClosed
 	}
-	wrapped := &gateConn{Conn: c, gate: g, epoch: epoch}
+	_, datagrams := c.(*socksDatagrams)
+	wrapped := &gateConn{Conn: c, gate: g, epoch: epoch, datagrams: datagrams}
 	g.connections[wrapped] = struct{}{}
 	g.mu.Unlock()
 	return wrapped, nil
@@ -401,9 +408,10 @@ func (g *EgressGate) ExchangeDNS(ctx context.Context, query *dns.Msg) (*dns.Msg,
 
 type gateConn struct {
 	net.Conn
-	gate  *EgressGate
-	epoch uint64
-	once  sync.Once
+	gate      *EgressGate
+	epoch     uint64
+	once      sync.Once
+	datagrams bool
 }
 
 func (c *gateConn) valid() bool {
@@ -416,14 +424,22 @@ func (c *gateConn) Read(b []byte) (int, error) {
 		_ = c.Close()
 		return 0, ErrGateClosed
 	}
-	return c.Conn.Read(b)
+	n, err := c.Conn.Read(b)
+	if err == nil && c.datagrams {
+		c.gate.udpReplies.Add(1)
+	}
+	return n, err
 }
 func (c *gateConn) Write(b []byte) (int, error) {
 	if !c.valid() {
 		_ = c.Close()
 		return 0, ErrGateClosed
 	}
-	return c.Conn.Write(b)
+	n, err := c.Conn.Write(b)
+	if err == nil && c.datagrams {
+		c.gate.udpRelayed.Add(1)
+	}
+	return n, err
 }
 
 func (c *gateConn) CloseWrite() error {

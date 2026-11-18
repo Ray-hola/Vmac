@@ -11,7 +11,7 @@ import (
 )
 
 const Repository = "Lee-xeo/Claude-Cage"
-const ReleasesURL = "https://api.github.com/repos/" + Repository + "/releases?per_page=100"
+const VMacRepository = "Ray-hola/Vmac"
 
 // Releases must stay below the limit of every published App that still updates
 // in place; scripts/prepare-release-assets.mjs enforces that smaller limit.
@@ -53,7 +53,24 @@ func archiveName(version, goos, goarch string) (string, error) {
 }
 
 func Select(releases []Release, current, goos, goarch string) (*Candidate, error) {
-	if _, err := archiveName(current, goos, goarch); err != nil {
+	return selectRelease(releases, current, Repository, func(version string) ([]string, error) {
+		name, err := archiveName(version, goos, goarch)
+		return []string{name}, err
+	})
+}
+
+func SelectVMac(releases []Release, current, goos, goarch string) (*Candidate, error) {
+	return selectRelease(releases, current, VMacRepository, func(version string) ([]string, error) {
+		if goos != "darwin" || goarch != "arm64" {
+			return nil, errors.New("VMac 更新需要 Apple Silicon Mac")
+		}
+		base := "VMac-" + version + "-macos-arm64"
+		return []string{base + ".dmg", base + ".zip"}, nil
+	})
+}
+
+func selectRelease(releases []Release, current, repository string, archiveNames func(string) ([]string, error)) (*Candidate, error) {
+	if _, err := archiveNames(current); err != nil {
 		return nil, err
 	}
 	currentTag := "v" + current
@@ -73,30 +90,29 @@ func Select(releases []Release, current, goos, goarch string) (*Candidate, error
 		if best != nil && semver.Compare(r.Tag, "v"+best.Version) <= 0 {
 			continue
 		}
-		c := Candidate{Version: v}
-		name, _ := archiveName(v, goos, goarch)
+		base := "https://github.com/" + repository + "/releases/download/" + r.Tag + "/"
+		archives := make(map[string]Asset)
+		var checksums Asset
 		for _, a := range r.Assets {
-			if a.State != "uploaded" {
+			if a.State != "uploaded" || a.Size <= 0 {
 				continue
 			}
-			if a.Name == name && a.Size > 0 && a.Size <= MaxArchive {
-				c.Archive = a
+			if a.Name == "SHA256SUMS" && a.Size <= 64<<10 {
+				checksums = a
+			} else if a.Size <= MaxArchive && a.URL == base+a.Name {
+				archives[a.Name] = a
 			}
-			if a.Name == "SHA256SUMS" && a.Size > 0 && a.Size <= 64<<10 {
-				c.Checksums = a
+		}
+		if checksums.URL != "" && checksums.URL != base+"SHA256SUMS" {
+			continue
+		}
+		names, _ := archiveNames(v)
+		for _, name := range names {
+			if archive, ok := archives[name]; ok && (archive.Digest != "" || checksums.URL != "") {
+				best = &Candidate{Version: v, Archive: archive, Checksums: checksums}
+				break
 			}
 		}
-		if c.Archive.URL == "" {
-			continue
-		}
-		base := "https://github.com/" + Repository + "/releases/download/" + r.Tag + "/"
-		if c.Archive.URL != base+name || (c.Checksums.URL != "" && c.Checksums.URL != base+"SHA256SUMS") {
-			continue
-		}
-		if c.Archive.Digest == "" && c.Checksums.URL == "" {
-			continue
-		}
-		best = &c
 	}
 	return best, nil
 }

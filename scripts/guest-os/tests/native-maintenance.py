@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shlex
 import signal
@@ -103,7 +104,12 @@ exit "${CAGE_TEST_FAIL_REGISTER:-0}"
         script = script.replace('/bin/launchctl', str(self.root / 'launchctl'))
         self.write('kit/maintain-macos-workbench.sh', script)
         self.write('kit/claude-desktop-macos.sh', self.translate((SOURCE / 'claude-desktop-macos.sh').read_text()))
-        self.write('plist-buddy', '#!/bin/sh\necho dev.cage.fixture\n', 0o755)
+        self.write('plist-buddy', '''#!/bin/sh
+case "$3" in
+    */CageProjectAccess.app/*) echo dev.cage.guest.project-access ;;
+    *) echo dev.cage.fixture ;;
+esac
+''', 0o755)
         self.write('launchctl', '''#!/bin/sh
 if [ -n "${CAGE_TEST_LOGIN_WINDOW:-}" ]; then exit 1; fi
 if [ "$1" = bootstrap ] && [ -n "${CAGE_TEST_FAIL_ACTIVATION:-}" ] && [ ! -f "$CAGE_TEST_FAIL_ACTIVATION" ]; then
@@ -119,12 +125,24 @@ id() { if [[ $1 == -u ]]; then echo 501; else echo staff; fi; }
 dscl() { printf 'NFSHomeDirectory: %s\\n' "$3"; }
 stat() {
     if [[ $* == *'/dev/console'* ]]; then if [[ -n ${CAGE_TEST_LOGIN_WINDOW:-} ]]; then echo 0; else echo 501; fi
-    elif [[ $* == *'/Users/cage/Library/LaunchAgents/'* ]]; then echo 501
+    elif [[ $* == *'/Users/cage/Library/LaunchAgents/'* || $* == *'/Users/cage/Library/Caches/'* ]]; then echo 501
     elif [[ $2 == *Lp || $2 == *Op ]]; then echo 755
     else echo 0; fi
 }
 find() { :; }
-codesign() { if [[ $1 == -dv ]]; then echo 'TeamIdentifier=FIXTURE'; fi; }
+codesign() {
+    if [[ $1 == -dv ]]; then
+        case "$2" in
+            */Applications/CageProjectAccess.app) echo "TeamIdentifier=$CAGE_TEST_LEGACY_TEAM" ;;
+            */kit/project/CageProjectAccess.app) echo "TeamIdentifier=${CAGE_TEST_NEW_TEAM:-not set}" ;;
+            *) echo 'TeamIdentifier=FIXTURE' ;;
+        esac
+    elif [[ $* == *'certificate leaf[subject.OU] = "WBR2J2NFHN"'* ]]; then
+        [[ ${CAGE_TEST_LEGACY_SIGNATURE:-invalid} == valid ]]
+    elif [[ $* == *'certificate leaf[subject.OU] = "VMACQA1234"'* ]]; then
+        [[ ${CAGE_TEST_NEW_SIGNATURE:-invalid} == valid ]]
+    fi
+}
 ditto() { cp -R "$1" "$2"; }
 sudo() { shift 2; "$@"; }
 ps() { :; }
@@ -188,6 +206,62 @@ nc() { test "$1/$2/$3" = "-z/127.0.0.1/5900" && test -f "$QA_ROOT/loaded"; }
         env = {**os.environ, 'BASH_ENV': str(self.root / 'environment.sh'), 'CAGE_TEST_FAIL_REGISTER': '1' if fail else '0'}
         return subprocess.run(['/bin/bash', str(self.kit / 'maintain-macos-workbench.sh'), str(self.kit), 'cage', 'components'],
                               capture_output=True, text=True, env=env, timeout=15)
+
+    def test_migrates_only_the_verified_legacy_project_helper(self):
+        self.prepare_installer()
+        target = 'Applications/CageProjectAccess.app/Contents/MacOS/CageProjectAccess'
+        previous = self.write(target, 'legacy-binary')
+        self.write('kit/project/CageProjectAccess.app/Contents/MacOS/CageProjectAccess', 'replacement-binary')
+        for team, signature, next_team, next_signature, expected in [
+            ('OTHERTEAM', 'valid', 'not set', 'invalid', False),
+            ('WBR2J2NFHN', 'invalid', 'not set', 'invalid', False),
+            ('WBR2J2NFHN', 'valid', 'not set', 'invalid', True),
+            ('WBR2J2NFHN', 'valid', 'VMACQA1234', 'invalid', False),
+            ('WBR2J2NFHN', 'valid', 'VMACQA1234', 'valid', True),
+        ]:
+            previous.write_text('legacy-binary')
+            with patch.dict(os.environ, CAGE_TEST_LEGACY_TEAM=team, CAGE_TEST_LEGACY_SIGNATURE=signature,
+                            CAGE_TEST_NEW_TEAM=next_team, CAGE_TEST_NEW_SIGNATURE=next_signature):
+                result = self.run_install()
+            if expected:
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(previous.read_text(), 'replacement-binary')
+            else:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('CageProjectAccess.app', result.stderr)
+                self.assertEqual(previous.read_text(), 'legacy-binary')
+
+    def test_registration_replaces_the_legacy_single_argument(self):
+        self.prepare_installer()
+        home = self.root / 'Users/cage'
+        env = {**os.environ, 'HOME': str(home), 'BASH_ENV': str(self.root / 'environment.sh')}
+        for helper, kind, label in (
+            ('claude-window', 'Window', 'dev.cage.GuestClaudeWindow'),
+            ('clipboard', 'Clipboard', 'dev.cage.GuestClipboard'),
+        ):
+            with self.subTest(helper=helper):
+                source = self.translate((SOURCE / f'register-macos-{helper}.sh').read_text())
+                source = source.replace('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '/usr/bin/true')
+                script = self.write(f'register-{helper}.sh', source)
+                command = ['/bin/bash', str(script), '--prepare']
+                result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                agent = home / f'Library/LaunchAgents/{label}.plist'
+                current = agent.read_bytes()
+                old_binary = self.root / f'Applications/Cage Guest {kind}.app/Contents/MacOS/CageGuest{kind}'
+                subprocess.run(['/usr/bin/plutil', '-replace', 'ProgramArguments', '-xml',
+                                f'<array><string>{old_binary}</string></array>', str(agent)], check=True)
+                legacy = agent.read_bytes()
+                config = plistlib.loads(legacy)
+                config['ProgramArguments'].append('unexpected')
+                agent.write_bytes(plistlib.dumps(config))
+                result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(plistlib.loads(agent.read_bytes()), config)
+                agent.write_bytes(legacy)
+                result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(agent.read_bytes(), current)
 
     def test_cli_tool_update_adds_github_and_preserves_login(self):
         self.prepare_installer()

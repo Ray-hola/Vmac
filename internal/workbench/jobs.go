@@ -176,6 +176,8 @@ func (m *jobManager) finishLocked(execution *jobExecution, err error) {
 			m.state.Workspace = projectFailure.Path
 		} else if errors.Is(err, errMacOSNetworkRestart) {
 			m.state.Recovery = "environment-restart"
+		} else if errors.Is(err, errMacOSAutomaticComponentSync) || errors.Is(err, errMacOSComponentUpdate) {
+			m.state.Recovery = "environment-update"
 		}
 		m.state.Message = jobName(m.state.Kind) + "失败"
 		var networkFailure networkCheckError

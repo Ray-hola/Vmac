@@ -13,7 +13,7 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-const repositoryAPI = "https://api.github.com/repos/" + repository
+var repositoryAPI = "https://api.github.com/repos/" + repository
 
 // CheckItem keeps independent failures visible without discarding other results.
 type CheckItem struct {

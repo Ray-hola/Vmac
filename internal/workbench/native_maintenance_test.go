@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Ray-hola/Vmac/internal/cage"
 	"github.com/Ray-hola/Vmac/internal/guestos"
 	"golang.org/x/crypto/ssh"
 )
@@ -107,6 +109,101 @@ func TestNativeVersionsUsesBoundTransportAndActualManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("unknown", false)
+}
+
+func TestStartedVMacSynchronizesOnlyAnOutdatedExistingGuest(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("uses a macOS test controller")
+	}
+	for _, tc := range []struct {
+		name                       string
+		boot, current, setup, fail bool
+		wantSync                   bool
+	}{
+		{name: "cold boot with older components", boot: true, wantSync: true},
+		{name: "already current", boot: true, current: true},
+		{name: "attach to running guest"},
+		{name: "first setup", boot: true, setup: true},
+		{name: "installer failure", boot: true, fail: true, wantSync: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			kit := macMaintenanceKit(t)
+			manifest, err := guestos.RequiredNativeComponents(kit, guestos.MacOS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attempt := filepath.Join(filepath.Dir(kit), "sync-attempt")
+			g := newMacWorkspaceGuest(t, func(ch ssh.Channel, command string) (uint32, bool) {
+				switch {
+				case strings.Contains(command, "uname -s"):
+					return 0, true
+				case strings.Contains(command, "hashlib.file_digest"):
+					_ = json.NewEncoder(ch).Encode(nativeComponentSnapshot{Manifest: &manifest.GuestManifest, Installed: true})
+					return 0, true
+				case strings.Contains(command, "cage-components.json"):
+					receipt := manifest.GuestManifest
+					if !tc.current {
+						receipt.Revision = "older"
+					}
+					_ = json.NewEncoder(ch).Encode(struct {
+						cage.GuestManifest
+						System string `json:"system"`
+					}{receipt, guestos.MacOS})
+					return 0, true
+				}
+				return 0, false
+			})
+			s := g.s
+			s.ready = false
+			if tc.setup {
+				s.macosGuest.SetupID = "pending"
+			}
+			s.exe = filepath.Join(filepath.Dir(kit), "vmac")
+			exitCode := 0
+			if tc.fail {
+				exitCode = 1
+			}
+			script := fmt.Sprintf("#!/bin/sh\n[ \"$#\" = 5 ] && [ \"$1 $2 $3 $4\" = 'guest-os macos update-components --manifest' ] && [ -s \"$5\" ] || exit 2\nprintf attempted > %q\nexit %d\n", attempt, exitCode)
+			if err = os.WriteFile(s.exe, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			disk := filepath.Join(s.instanceDir(), "disk")
+			if err = os.WriteFile(disk, []byte("existing disk"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := loadConfig(s.configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			gate, err := cage.NewEgressGate(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stopGate, err := cage.StartGateControl(s.configPath, s.instanceDir(), gate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stopGate()
+			s.setJobForTest(Job{ID: "boot", Kind: "start", Running: true})
+			err = s.attachMacOSGuestForBoot(tc.boot)
+			if tc.fail {
+				if !errors.Is(err, errMacOSAutomaticComponentSync) || macOSBootConnectionPending(err) || s.ready || !s.guestUpdateRequired {
+					t.Fatalf("failed component sync was not surfaced: %v", err)
+				}
+			} else if err != nil || !s.ready || ((tc.boot || tc.setup) && s.guestUpdateRequired) {
+				t.Fatalf("attach did not preserve readiness: %v", err)
+			}
+			if _, statErr := os.Stat(attempt); (statErr == nil) != tc.wantSync {
+				t.Fatalf("update process: %v", statErr)
+			}
+			if data, err := os.ReadFile(disk); err != nil || string(data) != "existing disk" {
+				t.Fatalf("original disk changed: %v", err)
+			}
+			if got := gate.Status().Mode; got != cage.GateClosed {
+				t.Fatalf("gate opened early: %s", got)
+			}
+		})
+	}
 }
 
 func TestNativeMaintenanceTransfersToExistingMacIdentity(t *testing.T) {
