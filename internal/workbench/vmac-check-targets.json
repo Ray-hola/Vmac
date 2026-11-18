@@ -1,0 +1,290 @@
+[
+  {
+    "id": "site-0",
+    "group": "cn",
+    "name": "DeepSeek",
+    "url": "https://www.deepseek.com/favicon.ico"
+  },
+  {
+    "id": "site-1",
+    "group": "cn",
+    "name": "抖音",
+    "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/favicon.ico"
+  },
+  {
+    "id": "site-2",
+    "group": "cn",
+    "name": "哔哩哔哩",
+    "url": "https://www.bilibili.com/favicon.ico"
+  },
+  {
+    "id": "site-3",
+    "group": "cn",
+    "name": "京东",
+    "url": "https://www.jd.com/favicon.ico"
+  },
+  {
+    "id": "site-4",
+    "group": "cn",
+    "name": "腾讯QQ",
+    "url": "https://www.qq.com/favicon.ico"
+  },
+  {
+    "id": "site-5",
+    "group": "cn",
+    "name": "微信",
+    "url": "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico"
+  },
+  {
+    "id": "site-6",
+    "group": "cn",
+    "name": "小红书",
+    "url": "https://fe-static.xhscdn.com/favicon.ico"
+  },
+  {
+    "id": "site-7",
+    "group": "cn",
+    "name": "新浪微博",
+    "url": "https://tva1.sinaimg.cn/favicon.ico"
+  },
+  {
+    "id": "site-8",
+    "group": "cn",
+    "name": "百度",
+    "url": "https://www.baidu.com/favicon.ico"
+  },
+  {
+    "id": "site-9",
+    "group": "cn",
+    "name": "网易",
+    "url": "https://www.163.com/favicon.ico"
+  },
+  {
+    "id": "site-10",
+    "group": "cn",
+    "name": "淘宝",
+    "url": "https://www.taobao.com/favicon.ico"
+  },
+  {
+    "id": "site-11",
+    "group": "cn",
+    "name": "小米",
+    "url": "https://www.mi.com/favicon.ico"
+  },
+  {
+    "id": "site-12",
+    "group": "jp",
+    "name": "Sony",
+    "url": "https://www.sony.jp/favicon.ico"
+  },
+  {
+    "id": "site-13",
+    "group": "jp",
+    "name": "任天堂",
+    "url": "https://www.nintendo.co.jp/favicon.ico"
+  },
+  {
+    "id": "site-14",
+    "group": "jp",
+    "name": "Yahoo! JP",
+    "url": "https://www.yahoo.co.jp/favicon.ico"
+  },
+  {
+    "id": "site-15",
+    "group": "jp",
+    "name": "LINE",
+    "url": "https://line.me/favicon.ico"
+  },
+  {
+    "id": "site-16",
+    "group": "us",
+    "name": "Apple",
+    "url": "https://www.apple.com/favicon.ico"
+  },
+  {
+    "id": "site-17",
+    "group": "us",
+    "name": "Google",
+    "url": "https://www.google.com/generate_204"
+  },
+  {
+    "id": "site-18",
+    "group": "us",
+    "name": "YouTube",
+    "url": "https://www.youtube.com/generate_204"
+  },
+  {
+    "id": "site-19",
+    "group": "us",
+    "name": "GitHub",
+    "url": "https://github.com/generate_204"
+  },
+  {
+    "id": "site-20",
+    "group": "us",
+    "name": "Cloudflare",
+    "url": "https://1.1.1.1/cdn-cgi/trace"
+  },
+  {
+    "id": "site-21",
+    "group": "us",
+    "name": "Claude",
+    "url": "https://api.anthropic.com/favicon.ico"
+  },
+  {
+    "id": "site-22",
+    "group": "us",
+    "name": "ChatGPT",
+    "url": "https://chatgpt.com/cdn-cgi/trace"
+  },
+  {
+    "id": "site-23",
+    "group": "us",
+    "name": "AI Studio",
+    "url": "https://generativelanguage.googleapis.com/favicon.ico"
+  },
+  {
+    "id": "site-24",
+    "group": "us",
+    "name": "Amazon",
+    "url": "https://www.amazon.com/favicon.ico"
+  },
+  {
+    "id": "site-25",
+    "group": "us",
+    "name": "Bing",
+    "url": "https://www.bing.com/favicon.ico"
+  },
+  {
+    "id": "site-26",
+    "group": "us",
+    "name": "Steam",
+    "url": "https://store.steampowered.com/favicon.ico"
+  },
+  {
+    "id": "site-27",
+    "group": "us",
+    "name": "Oracle",
+    "url": "https://www.oracle.com/favicon.ico"
+  },
+  {
+    "id": "site-28",
+    "group": "us",
+    "name": "Zoom",
+    "url": "https://st1.zoom.us/favicon.ico"
+  },
+  {
+    "id": "site-29",
+    "group": "us",
+    "name": "Facebook",
+    "url": "https://static.xx.fbcdn.net/rsrc.php/yb/r/hLRJ1GG_y0J.ico"
+  },
+  {
+    "id": "site-30",
+    "group": "us",
+    "name": "Instagram",
+    "url": "https://static.cdninstagram.com/rsrc.php/yb/r/hLRJ1GG_y0J.ico"
+  },
+  {
+    "id": "site-31",
+    "group": "us",
+    "name": "X",
+    "url": "https://abs.twimg.com/favicons/twitter.3.ico"
+  },
+  {
+    "id": "site-32",
+    "group": "us",
+    "name": "Reddit",
+    "url": "https://www.reddit.com/favicon.ico"
+  },
+  {
+    "id": "site-33",
+    "group": "us",
+    "name": "LinkedIn",
+    "url": "https://static.licdn.com/favicon.ico"
+  },
+  {
+    "id": "site-34",
+    "group": "us",
+    "name": "Twitch",
+    "url": "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png"
+  },
+  {
+    "id": "site-35",
+    "group": "us",
+    "name": "Netflix",
+    "url": "https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico"
+  },
+  {
+    "id": "site-36",
+    "group": "gl",
+    "name": "TikTok",
+    "url": "https://www.tiktok.com/favicon.ico"
+  },
+  {
+    "id": "site-37",
+    "group": "gl",
+    "name": "Spotify",
+    "url": "https://open.spotify.com/favicon.ico"
+  },
+  {
+    "id": "site-38",
+    "group": "gl",
+    "name": "npm",
+    "url": "https://registry.npmjs.org/"
+  },
+  {
+    "id": "site-39",
+    "group": "gl",
+    "name": "Takealot",
+    "url": "https://static.takealot.com/favicon.ico"
+  },
+  {
+    "id": "site-40",
+    "group": "gl",
+    "name": "PixPix",
+    "url": "https://www.pixpix.com/favicon.ico"
+  },
+  {
+    "id": "site-41",
+    "group": "gl",
+    "name": "Naver",
+    "url": "https://www.naver.com/favicon.ico"
+  },
+  {
+    "id": "site-42",
+    "group": "gl",
+    "name": "Noon",
+    "url": "https://www.noon.com/favicon.ico"
+  },
+  {
+    "id": "site-43",
+    "group": "gl",
+    "name": "Wikipedia",
+    "url": "https://www.wikipedia.org/static/favicon/wikipedia.ico"
+  },
+  {
+    "id": "site-44",
+    "group": "gl",
+    "name": "BBC",
+    "url": "https://www.bbc.com/favicon.ico"
+  },
+  {
+    "id": "site-45",
+    "group": "gl",
+    "name": "Mistral AI",
+    "url": "https://mistral.ai/favicon.ico"
+  },
+  {
+    "id": "site-46",
+    "group": "gl",
+    "name": "Yandex",
+    "url": "https://yastatic.net/favicon.ico"
+  },
+  {
+    "id": "site-47",
+    "group": "gl",
+    "name": "MercadoLibre",
+    "url": "https://http2.mlstatic.com/favicon.ico"
+  }
+]

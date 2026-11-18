@@ -1,0 +1,65 @@
+:root.vmac-theme {
+  --chrome: #f0eee7 !important; --chrome-dark: #e8e5db !important; --paper: #faf9f5 !important; --input: #fffefb !important;
+  --ink: #262624 !important; --strong: #262624 !important; --muted: #716d64 !important; --line: #dcd7cb !important; --border: #dcd7cb !important;
+  --accent: #a64d2f !important; --focus: #a64d2f !important; --hover: #eeeae0 !important; --selected: #eee1d7 !important; --selection: #ecd5bf !important;
+  --button: #a64d2f !important; --button-ink: #fffefb !important; --link: #a64d2f !important; --success: #527052 !important; --danger: #a43830 !important;
+  --ui-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif !important;
+  --code-font-family: "SF Mono", ui-monospace, Menlo, "PingFang SC", monospace !important;
+  color-scheme: light !important;
+}
+.native-guest-home { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 36px 44px 42px; background: var(--paper); color: var(--ink); font: 14px/1.6 var(--ui-font-family); }
+.native-page-header { padding-bottom: 22px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.native-page-header h1 { margin: 0 0 6px; font-size: 28px; font-weight: 650; line-height: 1.2; letter-spacing: -.02em; }
+.native-page-header p, .native-lifecycle p { margin: 0; color: var(--muted); }
+.native-lifecycle { max-width: 680px; padding-top: 12px; }
+.native-lifecycle h2 { margin: 0 0 8px; font-size: 22px; font-weight: 600; line-height: 1.3; }
+.native-primary-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 18px 0 22px; }
+.native-primary-actions:empty { display: none; }
+.native-machine-facts { display: grid; gap: 12px; padding-top: 20px; margin-top: 20px; border-top: 1px solid var(--line); }
+.native-machine-facts > span { display: flex; align-items: center; gap: 16px; color: var(--muted); }
+.native-machine-facts strong { min-width: 68px; font-weight: 600; color: var(--ink); }
+.native-text-action { margin-top: 20px; padding: 0; color: var(--accent); background: transparent; border: none; }
+.native-page-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 8px; color: var(--danger); }
+.native-page-error button { flex-shrink: 0; }
+.native-page-pending { color: var(--muted); }
+.native-guest-home > .proxy-manager { min-width: 0; width: 100%; }
+.native-guest-home .field-help { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.vmac-theme button, .vmac-theme input, .vmac-theme select, .vmac-theme textarea { font-family: var(--ui-font-family); }
+.native-guest-home :is(button, input, select, .proxy-summary, .proxy-help, .proxy-node, .proxy-source) { border-radius: 8px; }
+.native-guest-home button.primary { background: var(--button); color: var(--button-ink); border-color: var(--button); }
+.native-guest-home .proxy-tabs button[aria-selected="true"], .vmac-subnav button[aria-pressed="true"] { color: var(--accent); background: var(--selected); }
+.native-guest-home .proxy-badge.online { color: var(--success); }
+.vmac-subnav { display: flex; gap: 8px; margin: 0 0 22px; }
+.vmac-subnav button { padding: 8px 14px; border: 0; background: transparent; color: var(--muted); }
+.vmac-section { max-width: 1000px; padding: 20px 22px; margin-bottom: 22px; border: 1px solid var(--line); border-radius: 11px; }
+.vmac-section h2, .space-manager h2 { font-size: 18px; font-weight: 600; line-height: 1.35; margin: 0 0 6px; }
+.vmac-section p { color: var(--muted); margin: 6px 0; }
+.vmac-section .vmac-reading { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--ink); }
+.vmac-form-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.vmac-form-row label { display: flex; align-items: center; gap: 8px; }
+.vmac-form-row input[type="number"] { width: 78px; padding: 7px 9px; }
+.vmac-form-row button, .vmac-row button { min-height: 34px; padding: 6px 12px; }
+.vmac-section [role="alert"] { color: var(--danger); }
+.vmac-profiles { list-style: none; margin: 12px 0; padding: 0; }
+.vmac-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+.vmac-row small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+@media (max-width: 900px) { .native-guest-home { padding: 27px; } }
+.vmac-check-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.vmac-check-head h2 { margin:0; }
+.vmac-ok { color:var(--success); font-weight:600; }
+.vmac-muted { color:var(--muted); }
+.vmac-check-details { margin-top:14px; border-top:1px solid var(--line); padding:12px 0 0; }
+.vmac-check-details summary { cursor:pointer; color:var(--ink); font-weight:550; }
+.vmac-check-details summary small, .vmac-check-details dt small { margin-left:8px; color:var(--muted); font-weight:400; }
+.vmac-check-details dl { margin:12px 0 0; }
+.vmac-check-details dt { font-weight:600; }
+.vmac-check-details dd { margin:2px 0 12px; color:var(--muted); }
+.vmac-safety-tabs { padding:0 24px; margin:4px 0 12px; flex-wrap:wrap; }
+.vmac-safety-tools .vmac-section { max-width:none; }
+.vmac-progress { display:grid; gap:6px; margin:14px 0; color:var(--muted); }
+.vmac-progress progress { width:100%; accent-color:var(--accent); }
+.vmac-trace-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin:16px 0 20px; }
+.vmac-check-card { border:1px solid var(--line); border-radius:9px; padding:14px; overflow-wrap:anywhere; }
+.native-guest-home.native-setup-home { padding: 0; }
+.native-setup-content .initialization-brand { display: none; }
+.native-setup-content .initialization { min-height: 100%; }

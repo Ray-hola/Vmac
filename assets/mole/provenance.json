@@ -1,0 +1,8 @@
+{
+  "engine": "Mole",
+  "version": "1.60.0",
+  "license": "GPL-3.0",
+  "source": "Unmodified local pinned vendor at Minorminor/vendor/mole",
+  "archive_sha256": "16c0255b750bca4bbf1fbc2b70e2a651d6db91cc6455a467b02bd02b47d24ce4",
+  "scope": "Guest user Library/Caches and Library/Logs; Mole guards and selected Trash routing only; no whole clean invocation"
+}
