@@ -64,42 +64,146 @@
   border-top: 1px solid var(--line);
   padding-top: 14px;
 }
-.proxy-summary {
+.proxy-hero {
+  margin: 0 0 16px;
+  padding: 18px 20px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card, var(--paper));
+}
+.proxy-hero-head {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  margin: 18px 0 10px;
+  gap: 10px;
 }
-.proxy-summary > div {
-  flex: 1;
+.proxy-hero-label {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.proxy-chain {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 8px 0;
+  margin: 14px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.proxy-chain li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
+  padding: 8px 14px;
+  border-radius: 10px;
+  animation: vm-rise 0.32s var(--vm-ease, ease-out) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
 }
-.proxy-summary strong,
-.proxy-summary span,
+.proxy-chain li + li {
+  margin-left: 26px;
+}
+.proxy-chain li + li::before {
+  content: "";
+  position: absolute;
+  left: -22px;
+  top: 50%;
+  width: 18px;
+  height: 1.5px;
+  background: repeating-linear-gradient(90deg, var(--muted) 0 3px, transparent 3px 6px);
+  background-size: 12px 100%;
+  opacity: 0.6;
+  animation: proxy-flow 0.9s linear infinite;
+}
+@keyframes proxy-flow {
+  to { background-position: 12px 0; }
+}
+.proxy-chain-end {
+  color: var(--muted);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+}
+.proxy-chain-hop {
+  border: 1px solid var(--line);
+}
+.proxy-chain-exit {
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.proxy-chain small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.proxy-chain strong {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.proxy-chain-exit strong {
+  color: var(--accent);
+}
+.proxy-hero-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 12px;
+  color: var(--muted);
+}
+.proxy-hero-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+.proxy-hero-meta > span {
+  overflow-wrap: anywhere;
+}
+.proxy-hero-link {
+  margin-left: auto;
+  min-height: 26px;
+  padding: 2px 6px;
+  color: var(--accent);
+  font-size: 12px;
+}
 .proxy-source small,
 .proxy-node small,
 .proxy-connection small {
   display: block;
   overflow-wrap: anywhere;
 }
-.proxy-summary > div > span {
-  font-size: 12px;
-  opacity: 0.65;
-  margin-top: 5px;
-}
 .proxy-badge {
-  padding: 4px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
   background: color-mix(in srgb, currentColor 6%, transparent);
   border-radius: 20px;
-  font-size: 11px;
+  font-size: 11.5px;
   white-space: nowrap;
+}
+.proxy-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
 }
 .proxy-badge.online {
   color: var(--success);
   background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+.proxy-badge.online i {
+  opacity: 1;
+  animation: vm-pulse 2s ease-in-out infinite;
+}
+.proxy-panel {
+  animation: vm-fade 0.22s var(--vm-ease, ease-out);
 }
 .proxy-tabs {
   display: flex;

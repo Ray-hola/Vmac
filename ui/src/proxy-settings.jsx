@@ -20,6 +20,7 @@ import {
 import { api } from "./api";
 import { SafetyMessage } from "./safety-message";
 import { ProxyYAMLInput } from "./proxy-yaml-input";
+import { Segmented } from "./vmac-ui";
 import "./proxy.css";
 
 const bytes = (v) => {
@@ -62,7 +63,7 @@ const emptyManual = {
   passphrase: "",
   hostKey: "",
 };
-export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializing = false }) {
+export function ProxySettings({ status, onApplied, onConfirm, onDirty, onChecks, protection, initializing = false }) {
   const [proxy, setProxy] = useState(null),
     [tab, setTab] = useState("nodes"),
     [search, setSearch] = useState(""),
@@ -82,6 +83,7 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
   const [hostRefresh, setHostRefresh] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [readingFile, setReadingFile] = useState(false);
+  const [routeApplied, setRouteApplied] = useState(false);
   const alive = useRef(true),
     loading = useRef(false),
     latest = useRef(null),
@@ -179,6 +181,7 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
         setForm(null);
         setManual(emptyManual);
         if (action === "route" || action === "select") setRouteDraft(null);
+        setRouteApplied(action === "route" || action === "select");
         const importedSource =
           action === "import"
             ? updated.sources.at(-1)
@@ -314,9 +317,13 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
   );
   return (
     <div className="proxy-manager">
-      <div className="section-title">
-        <div className="proxy-heading">
-          <h3>内置代理</h3>
+      <section className="proxy-hero" aria-label="当前代理">
+        <div className="proxy-hero-head">
+          <span className="proxy-hero-label">{savedRoute.length > 1 ? "当前链路 · 链式代理" : "当前出口"}</span>
+          <span className={`proxy-badge ${proxy.network_open ? "online" : ""}`}>
+            <i aria-hidden="true" />
+            {proxy.state_label}
+          </span>
           <button
             type="button"
             className="icon-button proxy-help-toggle"
@@ -329,8 +336,44 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
             <CircleHelp size={17} aria-hidden="true" />
           </button>
         </div>
-        <p>选择最终出口，按需添加中转，供 VMac 内所有程序共用。</p>
-      </div>
+        {selected ? (
+          <ol className="proxy-chain" aria-label="代理链路">
+            <li className="proxy-chain-end">VMac</li>
+            {savedRoute.map((id, index) => (
+              <li key={id + index} className={index === savedRoute.length - 1 ? "proxy-chain-exit" : "proxy-chain-hop"} style={{ "--i": index + 1 }}>
+                <small>{index === savedRoute.length - 1 ? "出口" : "中转"}</small>
+                <strong>{routeName(id)}</strong>
+              </li>
+            ))}
+            <li className="proxy-chain-end" style={{ "--i": savedRoute.length + 1 }}>目标网站</li>
+          </ol>
+        ) : (
+          <p className="proxy-hero-empty">
+            <Server size={18} />
+            尚未配置代理节点。添加来源并选择出口后，VMac 才能联网。
+          </p>
+        )}
+        <div className="proxy-hero-meta">
+          <span>
+            {proxy.active ? (proxy.running ? "自带核心运行中" : "核心未就绪") : "未启用"}
+          </span>
+          <span>独立端口 {proxy.port}</span>
+          {proxy.active && status.location && (
+            <span title="联网是否放行以环境检测为准">
+              出口 {status.location.ip} · {status.location.country} {status.location.city}
+            </span>
+          )}
+          {protection?.state && (
+            <span>网关 {protection.lease ? "受保护" : protection.state === "checking" ? "检查中" : "未放行"}</span>
+          )}
+          {onChecks && (
+            <button type="button" className="text-button proxy-hero-link" onClick={onChecks}>
+              检测连接
+              <ArrowRight size={13} />
+            </button>
+          )}
+        </div>
+      </section>
       {helpOpen && (
         <section
           id="proxy-help"
@@ -390,64 +433,23 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
           </div>
         </section>
       )}
-      <div className="proxy-summary">
-        <Server size={22} />
-        <div>
-          <strong>
-            {selected ? `最终出口 · ${selected.name}` : "尚未配置代理节点"}
-          </strong>
-          {savedRoute.length > 1 && (
-            <span className="proxy-current-route">
-              当前链路：{savedRoute.map(routeName).join(" → ")}
-            </span>
-          )}
-          <span>
-            {proxy.active
-              ? proxy.running
-                ? "VMac 自带核心运行中"
-                : "核心未就绪"
-              : "请选择节点后应用，未配置时无法联网"}{" "}
-            · 独立端口 {proxy.port}
-          </span>
-        </div>
-        <span className={`proxy-badge ${proxy.network_open ? "online" : ""}`}>
-          {proxy.state_label}
-        </span>
-      </div>
-      {proxy.active && status.location && (
-        <p className="field-help">
-          最近检测出口：{status.location.ip} · {status.location.country}{" "}
-          {status.location.city}。联网是否放行以工作台检查状态为准。
-        </p>
-      )}
       {!proxy.core_available && (
         <div role="alert" className="error-message">
           安装包缺少随附代理核心，请重新构建或安装完整 VMac 应用。
         </div>
       )}
-      <p className="field-help">
-        {status.guest_system === "macos"
-          ? "公网 IPv4 TCP、UDP 和系统 DNS 都经过当前出口。IPv6、ICMP 持续阻断。"
-          : "仅允许经节点转发的 IPv4 TCP 和 DNS。公网 UDP、IPv6、ICMP 持续阻断。"}
-        切换会关闭旧网络连接并重新检查出口。
-      </p>
-      <div role="tablist" aria-label="代理管理" className="proxy-tabs">
-        {[
-          ["nodes", "节点"],
-          ["sources", "订阅"],
+      <Segmented
+        label="代理管理"
+        value={tab}
+        onChange={setTab}
+        items={[
+          ["nodes", "节点", allNodes.length || null],
+          ["sources", "订阅", proxy.sources.length || null],
           ["connections", "连接"],
           ["diagnostics", "诊断"],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
+      <div className="proxy-panel" key={tab}>
       {tab === "nodes" && (
         <>
           {allNodes.length > 0 && (
@@ -566,6 +568,7 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
                   添加中转
                 </button>
               )}
+              {routeChanged && (
               <div className="proxy-route-preview" aria-label="待应用链路">
                 <Route size={16} aria-hidden="true" />
                 <span>VMac</span>
@@ -578,6 +581,7 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
                 <ArrowRight size={13} aria-hidden="true" />
                 <span>目标网站</span>
               </div>
+              )}
               <div className="proxy-route-actions">
                 <span aria-live="polite">
                   {routeChanged
@@ -1172,6 +1176,12 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
       {tab === "diagnostics" && (
         <>
           <p className="field-help">
+            {status.guest_system === "macos"
+              ? "公网 IPv4 TCP、UDP 和系统 DNS 都经过当前出口。IPv6、ICMP 持续阻断。"
+              : "仅允许经节点转发的 IPv4 TCP 和 DNS。公网 UDP、IPv6、ICMP 持续阻断。"}
+            切换会关闭旧网络连接并重新检查出口。
+          </p>
+          <p className="field-help">
             随附核心 {proxy.version || "未运行"}。以下为 VMac
             状态摘要；含凭据风险的核心原始日志不向页面公开。
           </p>
@@ -1227,6 +1237,7 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
           </p>
         </>
       )}
+      </div>
       {pending && (
         <p className="proxy-progress" role="status">
           <LoaderCircle size={14} className="spin" />
@@ -1244,6 +1255,12 @@ export function ProxySettings({ status, onApplied, onConfirm, onDirty, initializ
         <p role="status" className="proxy-notice">
           <Check size={14} />
           {notice}
+          {routeApplied && onChecks && (
+            <button type="button" className="text-button" onClick={onChecks}>
+              检测新出口
+              <ArrowRight size={13} />
+            </button>
+          )}
         </p>
       )}
     </div>

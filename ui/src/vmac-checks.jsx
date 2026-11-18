@@ -1,9 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Activity, Globe2, LoaderCircle, Play, ShieldCheck, Square } from "lucide-react";
 import { api } from "./api";
+import { SafetyPanel } from "./safety";
+import { Segmented, StatusChip } from "./vmac-ui";
 
 const protectionLabel = {
   protected: "受保护", checking: "检查中", paused: "手动断网", unready: "未就绪", expired: "结果过期",
 };
+export const protectionTone = { protected: "ok", checking: "busy", paused: "warn", unready: "idle", expired: "warn" };
+export const protectionText = state => protectionLabel[state?.state] || "正在读取";
 const checkLabel = { passed: "通过", failed: "未通过", unknown: "待验证", stale: "过期", blocked: "已断网" };
 const groups = [["cn","中国"],["jp","日本"],["us","美国"],["gl","全球"]];
 const dnsKeys = [
@@ -50,7 +55,7 @@ export function useVMacProtection(active, gate) {
   return { ...state, ...transition, lease: protectedNow ? state.lease : "", refresh: () => read.current?.() };
 }
 
-export function NetworkChecks({ protection, onEnvironment }) {
+export function NetworkChecks({ protection }) {
   const [pending, setPending] = useState(false);
   const [measured, setMeasured] = useState(null);
   const [error, setError] = useState("");
@@ -64,30 +69,27 @@ export function NetworkChecks({ protection, onEnvironment }) {
     } catch (failure) { setError(failure.message); }
     finally { setPending(false); }
   }
-  return <section className="vmac-section vmac-network" aria-label="网关检测">
-    <div className="vmac-check-head">
-      <h2>网关检测</h2>
-      <span className={protection.lease ? "vmac-ok" : "vmac-muted"}>{protectionLabel[protection.state] || "正在读取"}</span>
+  return <section className="vm-card vm-check" aria-label="网关检测">
+    <div className="vm-card-head">
+      <div><h2>网关检测</h2><p>{protection.reason || "正在读取当前客机门禁和 Mihomo 核心…"}</p></div>
+      <StatusChip tone={protectionTone[protection.state] || "idle"}>{protectionText(protection)}</StatusChip>
     </div>
-    <p>{protection.reason || "正在读取当前客机门禁和 Mihomo 核心…"}</p>
-    <div className="vmac-form-row">
-      <button disabled={pending} onClick={run}>{pending ? "检测中…" : "代理检测"}</button>
-      <button onClick={onEnvironment}>环境检测</button>
+    <div className="vm-actions">
+      <button className="primary" disabled={pending} onClick={run}>{pending ? <LoaderCircle size={15} className="spin" /> : <Activity size={15} />}{pending ? "检测中…" : "检测 TCP / UDP"}</button>
     </div>
-    {measured?.observed_at && <p role="status" className={current ? "vmac-reading" : ""}>
-      TCP {measured.tcp ? "通过" : "未通过"} · UDP {measured.udp ? "通过" : "未通过"} · {stamp(measured.observed_at)}
-      {!current && " · 历史结果"}
-    </p>}
+    {measured?.observed_at && <div className={`vm-result-row ${current ? "" : "stale"}`} role="status">
+      <span className={measured.tcp ? "ok" : "bad"}>TCP {measured.tcp ? "通过" : "未通过"}</span>
+      <span className={measured.udp ? "ok" : "bad"}>UDP {measured.udp ? "通过" : "未通过"}</span>
+      <small>{stamp(measured.observed_at)}{!current && " · 历史结果"}</small>
+    </div>}
     {measured && !measured.observed_at && <p role="status">TCP、UDP 未验证。{measured.stale ? "检测期间出口或门禁发生变化。" : measured.protection?.reason}</p>}
-    {error && <p role="alert">{error}</p>}
-    {!!protection.checks?.length && <details className="vmac-check-details">
-      <summary>查看保护依据</summary>
-      {protection.report_at && <p>隔离报告 {stamp(protection.report_at)}{protection.until && ` · 有效至 ${stamp(protection.until)}`}</p>}
-      <dl>{protection.checks.map(check => <React.Fragment key={check.label}>
-        <dt>{check.label} <small>{checkLabel[check.state] || check.state}</small></dt>
-        <dd>{check.detail}</dd>
-      </React.Fragment>)}</dl>
-    </details>}
+    {error && <p className="vm-error" role="alert">{error}</p>}
+    {!!protection.checks?.length && <div className="vm-evidence">
+      <h3>保护依据{protection.report_at && <small>隔离报告 {stamp(protection.report_at)}{protection.until && ` · 有效至 ${stamp(protection.until)}`}</small>}</h3>
+      <ul>{protection.checks.map(check => <li key={check.label} className={check.state}>
+        <i aria-hidden="true" /><strong>{check.label}</strong><span>{check.detail}</span><small>{checkLabel[check.state] || check.state}</small>
+      </li>)}</ul>
+    </div>}
   </section>;
 }
 
@@ -151,9 +153,11 @@ function useCheckRun(protection) {
 function Progress({ state, protection }) {
   const { run, current } = state;
   return <>
-    {!protection.lease && <p className="vmac-muted">已暂停外部探测。{protection.reason || "当前客机保护未放行。"}</p>}
-    {run && <div className="vmac-progress" role="status">
-      <progress max={run.total} value={run.done} aria-label="检测进度" />
+    {!protection.lease && <p className="vm-note">已暂停外部探测。{protection.reason || "当前客机保护未放行。"}</p>}
+    {run && <div className={`vm-progress ${run.running ? "running" : ""}`} role="status">
+      <div className="vm-progress-track" role="progressbar" aria-label="检测进度" aria-valuemax={run.total} aria-valuenow={run.done}>
+        <i style={{ width: `${run.total ? run.done / run.total * 100 : 0}%` }} />
+      </div>
       <span>{run.done} / {run.total} · {run.running ? "正在检测" : run.note} · {stamp(run.started)}{!current && " · 历史结果"}</span>
     </div>}
   </>;
@@ -187,40 +191,44 @@ export function ClaudeChecks({ protection }) {
     const keys = ["claude-com","claude-ai","browser-signals",...dnsKeys];
     return session.begin(keys, async (key,probe,sample) => sample(key,await probe(key)), keys.length);
   };
-  return <section className="vmac-section">
-    <h2>Claude 检测</h2>
-    <p>站点和解析器探测经当前客机网关发出。环境项通过客机 Chrome 里的本地检测页采集。</p>
-    <div className="vmac-form-row">
-      <button className="primary" disabled={!protection.lease || run?.running} onClick={runTests}>开始检测</button>
-      {run?.running && <button onClick={session.stop}>停止检测</button>}
+  return <section className="vm-card vm-check">
+    <div className="vm-card-head">
+      <div><h2>Claude 检测</h2><p>站点和解析器探测经当前客机网关发出。环境项通过客机 Chrome 里的本地检测页采集。</p></div>
+    </div>
+    <div className="vm-actions">
+      <button className="primary" disabled={!protection.lease || run?.running} onClick={runTests}><Play size={14} fill="currentColor" />开始检测</button>
+      {run?.running && <button onClick={session.stop}><Square size={13} />停止检测</button>}
     </div>
     <Progress state={session} protection={protection} />
-    <div className="vmac-trace-grid">
+    <div className="vm-trace-grid">
       {[["claude-com","claude.com"],["claude-ai","claude.ai"]].map(([key,host])=>{
         const item = samples[key]?.[0];
-        return <div key={key} className="vmac-check-card">
-          <strong>{host}</strong>
-          <p className="vmac-reading">{item?.ip || (item ? "未取得出口" : "未测")}</p>
-          {item?.ip ? <p>{item.loc || "地区未知"} · {item.colo || "边缘节点未知"} · {item.ms} ms</p> : item && <p>{item.error}</p>}
+        return <div key={key} className={`vm-trace ${item?.ip ? "ok" : item ? "bad" : ""}`}>
+          <small><Globe2 size={13} />{host}</small>
+          <strong>{item?.ip || (item ? "未取得出口" : "未测")}</strong>
+          {item?.ip ? <span>{item.loc || "地区未知"} · {item.colo || "边缘节点未知"} · {item.ms} ms</span> : item ? <span>{item.error}</span> : <span>等待检测</span>}
         </div>;
       })}
     </div>
-    <h3>DNS 解析器</h3>
-    <p>有效响应 {valid} / {received} · {dns.size} 组解析器</p>
-    {!dns.size ? <p>{received ? "本次未取得有效解析器样本。" : "未测"}</p> : <ul className="vmac-profiles">
-      {[...dns.values()].map(row=><li className="vmac-row" key={row.ip}>
-        <div><strong>{row.ip}</strong><small>{[row.geo,row.org,[...row.sources].join(" / ")].filter(Boolean).join(" · ")}</small></div>
-        <span>{row.cc || "归属未知"}</span>
-      </li>)}
-    </ul>}
-    <h3>客机浏览器区域信号</h3>
-    <p>{score === null ? "分数暂不可用" : `${score} / 100 · ${score <= 30 ? "较少区域特征" : score <= 60 ? "中等区域特征" : "较多区域特征"}`}。分数仅描述当前检测页的区域信号，无法判断 Claude 账号状态或网络泄露情况。</p>
-    {browser?.error && <p>{browser.error}</p>}
-    <ul className="vmac-profiles">{rows.map(row=><li className="vmac-row" key={row.title}>
-      <div><strong>{row.title}</strong><small>{row.value || "未测"}</small></div>
-      <span>{row.points === null ? "未测" : `${row.points} / ${row.weight}`}</span>
-    </li>)}</ul>
-    <p>WebRTC {browser?.webrtc === true ? "API 可用" : browser?.webrtc === false ? "API 不可用" : "未测"} · STUN 未测。</p>
+    <div className="vm-subsection">
+      <h3>DNS 解析器<small>有效响应 {valid} / {received} · {dns.size} 组解析器</small></h3>
+      {!dns.size ? <p className="vm-note">{received ? "本次未取得有效解析器样本。" : "未测"}</p> : <ul className="vm-rows">
+        {[...dns.values()].map(row=><li key={row.ip}>
+          <div><strong>{row.ip}</strong><small>{[row.geo,row.org,[...row.sources].join(" / ")].filter(Boolean).join(" · ")}</small></div>
+          <span>{row.cc || "归属未知"}</span>
+        </li>)}
+      </ul>}
+    </div>
+    <div className="vm-subsection">
+      <h3>客机浏览器区域信号<small>{score === null ? "分数暂不可用" : `${score} / 100 · ${score <= 30 ? "较少区域特征" : score <= 60 ? "中等区域特征" : "较多区域特征"}`}</small></h3>
+      <p className="vm-note">分数仅描述当前检测页的区域信号，无法判断 Claude 账号状态或网络泄露情况。</p>
+      {browser?.error && <p className="vm-error">{browser.error}</p>}
+      <ul className="vm-rows">{rows.map(row=><li key={row.title}>
+        <div><strong>{row.title}</strong><small>{row.value || "未测"}</small></div>
+        <span className="vm-score">{row.points === null ? "未测" : <><i style={{ width: `${row.points / row.weight * 100}%` }} /><b>{row.points} / {row.weight}</b></>}</span>
+      </li>)}</ul>
+      <p className="vm-note">WebRTC {browser?.webrtc === true ? "API 可用" : browser?.webrtc === false ? "API 不可用" : "未测"} · STUN 未测。</p>
+    </div>
   </section>;
 }
 
@@ -253,34 +261,67 @@ export function SiteChecks({ protection }) {
     }, list.length*rounds);
   }
   const disabled = !protection.lease || !targets.length || session.run?.running;
-  return <section className="vmac-section">
-    <h2>网络连通测试</h2>
-    <p>测量 HTTPS 请求总耗时。401、404 等响应计为站点可达，业务可用性未测。</p>
-    <div className="vmac-form-row">
-      <button className="primary" disabled={disabled} onClick={()=>measure(null)}>开始检测</button>
-      <select aria-label="测试轮数" value={rounds} onChange={event=>setRounds(Number(event.target.value))} disabled={session.run?.running}>
-        <option value={1}>快速检测 · 1 轮</option><option value={8}>完整检测 · 8 轮</option>
-      </select>
-      {session.run?.running && <button onClick={session.stop}>停止检测</button>}
+  return <section className="vm-card vm-check">
+    <div className="vm-card-head">
+      <div><h2>网络连通测试</h2><p>测量 HTTPS 请求总耗时。401、404 等响应计为站点可达，业务可用性未测。</p></div>
+    </div>
+    <div className="vm-actions">
+      <button className="primary" disabled={disabled} onClick={()=>measure(null)}><Play size={14} fill="currentColor" />开始检测</button>
+      <Segmented label="测试轮数" value={rounds} onChange={setRounds} disabled={session.run?.running}
+        items={[[1, "快速 · 1 轮"], [8, "完整 · 8 轮"]]} />
+      {session.run?.running && <button onClick={session.stop}><Square size={13} />停止检测</button>}
     </div>
     <Progress state={session} protection={protection} />
-    {error && <p role="alert">{error}</p>}
-    {groups.map(([key,name])=>{
-      const items = targets.filter(target=>target.group===key);
-      const reachable = items.filter(item=>median(session.run?.samples[item.id]||[])!==null).length;
-      return <details className="vmac-check-details" key={key} open={session.run?.done > 0 || undefined}>
-        <summary>{name} <small>{items.length ? `${reachable} / ${items.length} 可达` : "正在读取站点"}</small></summary>
-        <div className="vmac-form-row"><button disabled={disabled} onClick={()=>measure(key)}>检测{name}站点</button></div>
-        <ul className="vmac-profiles">{items.map(item=>{
-          const results = session.run?.samples[item.id] || [];
-          const latency = median(results);
-          const successes = results.filter(value=>value.ok);
-          return <li className="vmac-row" key={item.id}>
-            <div><strong>{item.name}</strong><small>{results.length ? `成功 ${successes.length} / ${results.length} · ${successes.length ? "HTTP "+[...new Set(successes.map(value=>value.status))].join(" / ") : "未收到 HTTPS 响应"}` : "未测"}</small></div>
-            <span className="vmac-reading">{latency === null ? "—" : `${latency} ms`}</span>
-          </li>;
-        })}</ul>
-      </details>;
-    })}
+    {error && <p className="vm-error" role="alert">{error}</p>}
+    <div className="vm-site-groups">
+      {groups.map(([key,name])=>{
+        const items = targets.filter(target=>target.group===key);
+        const reachable = items.filter(item=>median(session.run?.samples[item.id]||[])!==null).length;
+        return <details className="vm-site-group" key={key} open={session.run?.done > 0 || undefined}>
+          <summary><strong>{name}</strong><small>{items.length ? `${reachable} / ${items.length} 可达` : "正在读取站点"}</small>
+            <button className="vm-quiet" disabled={disabled} onClick={event=>{ event.preventDefault(); measure(key); }}>检测此组</button>
+          </summary>
+          <ul className="vm-rows">{items.map(item=>{
+            const results = session.run?.samples[item.id] || [];
+            const latency = median(results);
+            const successes = results.filter(value=>value.ok);
+            return <li key={item.id}>
+              <div><strong>{item.name}</strong><small>{results.length ? `成功 ${successes.length} / ${results.length} · ${successes.length ? "HTTP "+[...new Set(successes.map(value=>value.status))].join(" / ") : "未收到 HTTPS 响应"}` : "未测"}</small></div>
+              <span className={`vm-latency ${latency === null ? "" : latency < 300 ? "fast" : latency < 800 ? "mid" : "slow"}`}>{latency === null ? "—" : `${latency} ms`}</span>
+            </li>;
+          })}</ul>
+        </details>;
+      })}
+    </div>
   </section>;
+}
+
+function criticalSummary(status) {
+  const checks = status.safety?.report?.checks?.filter(check => check.critical) || [];
+  return { passed: checks.filter(check => check.state === "passed").length, total: checks.length };
+}
+
+export function ChecksPage({ status, protection, onConfirm, onSettings, onOpenPage }) {
+  const [tab, setTab] = useState("isolation");
+  const critical = criticalSummary(status);
+  const location = status.location;
+  const tiles = [
+    { label: "网关保护", value: protectionText(protection), detail: protection.until ? `有效至 ${stamp(protection.until)}` : protection.reason || "正在读取", tone: protectionTone[protection.state] || "idle" },
+    { label: "隔离检查", value: critical.total ? `${critical.passed} / ${critical.total} 通过` : "尚无记录", detail: status.safety?.report?.created_at ? `检测于 ${stamp(status.safety.report.created_at)}` : "启动客机后自动检测", tone: critical.total && critical.passed === critical.total ? "ok" : critical.total ? "warn" : "idle" },
+    { label: "当前出口", value: location?.ip || "未检测", detail: location ? [location.country, location.city].filter(Boolean).join(" ") || "地区未知" : "经当前代理节点查询", tone: location?.ip ? "ok" : "idle" },
+  ];
+  return <div className="vm-checks">
+    <div className="vm-stats">
+      {tiles.map(tile => <div key={tile.label} className={`vm-stat ${tile.tone}`}>
+        <small><ShieldCheck size={13} />{tile.label}</small><strong>{tile.value}</strong><span>{tile.detail}</span>
+      </div>)}
+    </div>
+    <Segmented label="检测类别" value={tab} onChange={setTab}
+      items={[["isolation", "隔离报告"], ["gateway", "网关检测"], ["claude", "Claude 检测"], ["sites", "网络连通"]]} />
+    {/* Panels stay mounted so a running probe batch survives switching tabs. */}
+    <div className="vm-tabpanel" hidden={tab !== "isolation"}><SafetyPanel inline status={status} onConfirm={onConfirm} onSettings={onSettings} onOpenPage={onOpenPage} /></div>
+    <div className="vm-tabpanel" hidden={tab !== "gateway"}><NetworkChecks protection={protection} /></div>
+    <div className="vm-tabpanel" hidden={tab !== "claude"}><ClaudeChecks protection={protection} /></div>
+    <div className="vm-tabpanel" hidden={tab !== "sites"}><SiteChecks protection={protection} /></div>
+  </div>;
 }

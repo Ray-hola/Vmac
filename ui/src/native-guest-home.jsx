@@ -3,34 +3,43 @@ import React, { useEffect, useRef, useState } from "react";
 import { api, native } from "./api";
 import { requestMacOSRecovery } from "./macos-recovery";
 import { Modal } from "./modal";
-import { SafetyPanel } from "./safety";
 import { networkState } from "./safety-state.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
 import { SpaceManagement } from "./space-management";
 import { DiskCapacity, VMProfiles } from "./vmac-management";
-import { ClaudeChecks, NetworkChecks, SiteChecks, useVMacProtection } from "./vmac-checks";
+import { ChecksPage, protectionText, protectionTone, useVMacProtection } from "./vmac-checks";
+import { GuestOverview, guestPhase } from "./vmac-overview";
+import { PageHeader, Segmented, StatusChip } from "./vmac-ui";
 import "./native-guest-home.css";
 
 const titles = {
-  lifecycle: "启动与重启",
+  lifecycle: "客机桌面",
   desktop: "客机桌面",
   space: "虚拟机管理",
   proxy: "代理管理",
+  checks: "环境检测",
+};
+const subtitles = {
+  space: "扩大虚拟磁盘、清理客机缓存，或切换到另一台 macOS 客机。",
+  proxy: "选择出口节点、管理订阅，所有客机共用这套代理。",
+  checks: "核对隔离报告、网关保护和 Claude 站点连通。",
+};
+const phaseChip = {
+  busy: ["busy", "处理中"], ready: ["ok", "已就绪"], connecting: ["busy", "连接中"], failed: ["bad", "未完成"], stopped: ["idle", "已停止"],
 };
 
 export function NativeGuestHome({ setup = null }) {
-  useEffect(() => {
-    document.documentElement.classList.add("vmac-theme");
-    return () => document.documentElement.classList.remove("vmac-theme");
-  }, []);
+  useEffect(() => { document.documentElement.classList.add("vmac-theme"); }, []);
   const [status, setStatus] = useState(null);
   const [page, setPage] = useState("lifecycle");
   const [vmTab, setVMTab] = useState("space");
   const [settings, setSettings] = useState(null);
   const [section, setSection] = useState("");
-  const [safetyOpen, setSafetyOpen] = useState(false);
-  const protection = useVMacProtection(page === "proxy" || safetyOpen, status?.safety?.gate);
+  const [profile, setProfile] = useState("");
+  const [disk, setDisk] = useState(null);
+  const [scrolled, setScrolled] = useState(false);
+  const protection = useVMacProtection(page === "proxy" || page === "checks", status?.safety?.gate);
   const [error, setError] = useState("");
   const [request, setRequest] = useState(false);
   const [dialog, setDialog] = useState(null);
@@ -56,6 +65,8 @@ export function NativeGuestHome({ setup = null }) {
   function choosePage(value) {
     currentPage.current = value;
     setPage(value);
+    // Keep the native sidebar selection in step with in-page navigation.
+    void publishNavigation(latest.current).catch(() => {});
   }
   async function openSettings(value = "network") {
     try {
@@ -102,6 +113,7 @@ export function NativeGuestHome({ setup = null }) {
       ready: next.ready,
       busy: Boolean(next.job?.running),
       failed: Boolean(!next.job?.running && next.job?.error),
+      activity: next.job?.running ? next.job.kind || "" : "",
       network: networkState(next).label,
       destination: currentPage.current,
     });
@@ -252,60 +264,71 @@ export function NativeGuestHome({ setup = null }) {
       return false;
     }
   }
-  const busy = request || status?.job?.running;
-  const network = status && networkState(status);
-  const issue = error || (!status?.job?.running && (status?.job?.error || (status?.vm_running && status?.environment_update_error)));
+  async function stop() {
+    if (!latest.current?.vm_running || request || latest.current.job?.running) return;
+    if (!await confirm({ title: "停止 macOS 客机？", body: "请先保存客机中的工作。停止后客机文件和登录资料会保留，可随时再次启动。", confirm: "停止客机" })) return;
+    setError("");
+    setRequest(true);
+    automatic.current = false;
+    try {
+      const accepted = await api("/stop", {});
+      setStatus(current => current && { ...current, job: { ...accepted, kind: "stop", running: true, message: "正在停止客机…" } });
+      void pollNow.current?.();
+    } catch (failure) { setError(failure.message); }
+    finally { setRequest(false); }
+  }
+  useEffect(() => {
+    native("vmacProfiles").then(value => {
+      setProfile(value?.items?.find(item => item.id === value.active)?.name || "");
+    }).catch(() => {});
+  }, []);
   const lifecycle = ["lifecycle", "desktop"].includes(page);
+  const installed = status?.guest_system === "macos";
+  useEffect(() => {
+    if (!lifecycle || !installed || disk) return;
+    api("/macos/disk").then(setDisk).catch(() => {});
+  }, [lifecycle, installed, Boolean(disk)]);
+  const network = status && networkState(status);
+  const phase = status ? guestPhase(status, request) : "stopped";
+  const issue = error || (!status?.job?.running && (status?.job?.error || (status?.vm_running && status?.environment_update_error)));
   const showSetup = Boolean(setup && lifecycle);
-  return <main className={showSetup ? "native-guest-home native-setup-home" : "native-guest-home"}>
-    {!showSetup && <header className="native-page-header">
-      <div>
-        <h1>{titles[page]}</h1>
-        <p>{page === "proxy" ? "管理客机的代理节点、出口和连接规则。" :
-          page === "space" ? "管理客机磁盘、清理缓存，或切换 macOS 客机。" :
-          page === "desktop" ? "在原生客机画面中使用应用。" : "管理当前 macOS 客机的运行状态。"}</p>
-      </div>
-    </header>}
+  const pageKey = lifecycle ? "desktop" : page;
+  const scroller = useRef(null);
+  useEffect(() => { scroller.current?.scrollTo({ top: 0 }); }, [pageKey]);
+  const chip = !status ? null
+    : lifecycle ? <StatusChip tone={phaseChip[phase][0]}>{phaseChip[phase][1]}</StatusChip>
+    : page === "checks" ? <StatusChip tone={protectionTone[protection.state] || "idle"}>{protectionText(protection)}</StatusChip>
+    : page === "proxy" ? null
+    : <StatusChip tone={phaseChip[phase][0]}>{profile || "macOS 客机"} · {phaseChip[phase][1]}</StatusChip>;
+  return <main ref={scroller} className={showSetup ? "native-guest-home native-setup-home" : "native-guest-home"}
+    onScroll={event => setScrolled(event.currentTarget.scrollTop > 4)} data-scrolled={scrolled || undefined}>
+    {!showSetup && <PageHeader title={titles[page]} aside={chip}
+      subtitle={lifecycle ? (profile ? `${profile} · 原生客机画面与运行状态` : "原生客机画面与运行状态") : subtitles[page]} />}
     {setup && <div className="native-setup-content" hidden={!showSetup}>{setup}</div>}
-    {!showSetup && issue && <div className="native-page-error" role="alert">{issue}<button onClick={() => pollNow.current?.()}>重新检查</button></div>}
-    {!showSetup && (!status ? <p className="native-page-pending" role="status">正在读取客机状态…</p> :
-      lifecycle ? <section className="native-lifecycle">
-        <h2>{busy ? "正在处理客机操作" : status.ready ? "macOS 客机已就绪" : status.vm_running ? "正在连接客机" : "macOS 客机已停止"}</h2>
-        <p role="status">{busy ? status.job?.message || "正在提交操作…" : status.ready ? "打开桌面即可继续使用客机里的应用和文件。" : "启动后会连接现有客机并检查网络。"}</p>
-        <div className="native-primary-actions">
-          {status.vm_running && <button className="primary" onClick={() => openDesktop()} disabled={request}>打开客机桌面</button>}
-        </div>
-        <div className="native-machine-facts">
-          <span><strong>运行状态</strong>{status.ready ? "已连接" : status.vm_running ? "启动中" : "已停止"}</span>
-          <span><strong>网络检查</strong>{network.label}</span>
-        </div>
-        <button className="native-text-action" onClick={() => setSafetyOpen(true)}>查看网络与隔离检查</button>
-      </section> :
+    {!showSetup && issue && <div className="vm-banner" role="alert"><span>{issue}</span><button onClick={() => { setError(""); void pollNow.current?.(); }}>重新检查</button></div>}
+    {!showSetup && <div className="vm-page" key={pageKey}>
+      {!status ? <div className="vm-skeleton" role="status" aria-label="正在读取客机状态"><span /><span /><span /></div> :
+      lifecycle ? <GuestOverview status={status} network={network} request={request} disk={disk}
+        onStart={() => lifecycleAction.current?.("start")} onRestart={() => lifecycleAction.current?.("restart")}
+        onStop={stop} onOpen={() => openDesktop()} onNavigate={navigate} /> :
       page === "space" ? <>
-        <div className="vmac-subnav" role="group" aria-label="虚拟机管理">
-          <button aria-pressed={vmTab === "space"} onClick={() => setVMTab("space")}>空间管理</button>
-          <button aria-pressed={vmTab === "profiles"} onClick={() => setVMTab("profiles")}>虚拟机切换</button>
+        <Segmented label="虚拟机管理" value={vmTab} onChange={setVMTab}
+          items={[["space", "存储空间"], ["profiles", "虚拟机"]]} />
+        <div className="vm-tabpanel" key={vmTab}>
+          {vmTab === "space" ? <>
+            {installed ? <DiskCapacity status={status} onConfirm={confirm} onChanged={() => { setDisk(null); void pollNow.current?.(); }} /> : <section className="vm-card vm-empty" aria-label="虚拟磁盘">
+              <h2>还没有安装 macOS</h2><p>完成安装后，这里会显示磁盘容量、扩容和缓存清理。</p>
+              <button className="primary" onClick={() => navigate("desktop")}>打开安装向导</button>
+            </section>}
+            <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} onStart={() => lifecycleAction.current?.("start")} running={status.vm_running} />
+          </> : <VMProfiles status={status} onConfirm={confirm} />}
         </div>
-        {vmTab === "space" ? <>
-          {status.guest_system === "macos" ? <DiskCapacity status={status} onConfirm={confirm} onChanged={() => pollNow.current?.()} /> : <section className="vmac-section" aria-label="虚拟磁盘">
-            <h2>虚拟磁盘</h2><p>安装 macOS 后，这里会显示磁盘容量和扩容操作。</p>
-            <button onClick={() => navigate("desktop")}>打开安装向导</button>
-          </section>}
-          <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} />
-        </> : <VMProfiles status={status} onConfirm={confirm} />}
-      </> : <>
-        <NetworkChecks protection={protection} onEnvironment={() => setSafetyOpen(true)} />
-        <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}
-          onApplied={() => pollNow.current?.()} />
-      </>)}
+      </> : page === "checks" ? <ChecksPage status={status} protection={protection} onConfirm={confirm} onSettings={openSettings} onOpenPage={openGuestPage} />
+      : <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}
+          onApplied={() => pollNow.current?.()} onChecks={() => navigate("checks")} protection={protection} />}
+    </div>}
     {section && status && settings && <SettingsPanel current={settings} status={status} initialSection={section}
       onClose={() => setSection("")} onConfirm={confirm} onSaved={async () => setSettings(await api("/settings"))} />}
-    {safetyOpen && status && <SafetyPanel status={status} onClose={() => setSafetyOpen(false)}
-      onConfirm={confirm} onSettings={openSettings} onOpenPage={openGuestPage}
-      extraChecks={[
-        { id: "claude", label: "Claude 检测", panel: <ClaudeChecks protection={protection} /> },
-        { id: "network", label: "网络连通测试", panel: <SiteChecks protection={protection} /> },
-      ]} />}
     {dialog && <Modal title={dialog.title} onClose={() => resolve(false)}
       footer={<><button onClick={() => resolve(false)}>取消</button><button className="primary" onClick={() => resolve(true)}>{dialog.confirm}</button></>}>
       <div className="modal-body">{dialog.body}</div>
