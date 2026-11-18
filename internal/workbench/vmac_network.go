@@ -264,7 +264,7 @@ func (s *Server) vmacProxyCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 	defer cancel()
-	tcp := s.vmacHTTPS(ctx, "https://www.gstatic.com/generate_204", false)
+	tcp := s.vmacHTTPS(ctx, "https://www.gstatic.com/generate_204", false, false)
 	var udp bool
 	if s.vmacProbeAllowed(ctx, state.Lease) {
 		answer, _ := s.guestControl(ctx, "exec /usr/bin/dig +short +notcp +ignore +time=3 +tries=1 @1.1.1.1 example.com. A", "vmac-proxy-udp")
@@ -334,18 +334,24 @@ type vmacHTTPResult struct {
 	text     string
 }
 
-func (s *Server) vmacHTTPS(ctx context.Context, address string, body bool) vmacHTTPResult {
+func (s *Server) vmacHTTPS(ctx context.Context, address string, body, site bool) vmacHTTPResult {
 	file := "/dev/null"
 	if body {
 		file = "-"
 	}
-	args := []string{"/usr/bin/curl", "--disable", "--proto", "=https", "--noproxy", "*", "--silent", "--show-error", "--connect-timeout", "4", "--max-time", "7"}
-	if body {
-		args = append(args, "--max-filesize", "49152")
-	} else if address != "https://www.gstatic.com/generate_204" {
-		args = append(args, "--head")
+	deadline := "7"
+	metric := "%{time_total}"
+	if site {
+		deadline = "2.5"
+		metric = "%{time_starttransfer}"
 	}
-	args = append(args, "--output", file, "--write-out", "\n%{http_code} %{time_total}", "--", address)
+	args := []string{"/usr/bin/curl", "--disable", "--proto", "=https", "--noproxy", "*", "--silent", "--show-error", "--connect-timeout", "4", "--max-time", deadline}
+	if site {
+		args = append(args, "--header", "Cache-Control: no-cache", "--max-filesize", "262144")
+	} else if body {
+		args = append(args, "--max-filesize", "49152")
+	}
+	args = append(args, "--output", file, "--write-out", "\n%{http_code} "+metric, "--", address)
 	out, err := s.guestControl(ctx, "exec "+shellescape.QuoteCommand(args), "")
 	if err != nil {
 		return vmacHTTPResult{Error: "HTTPS 请求失败或超时"}
@@ -498,7 +504,7 @@ func (s *Server) vmacProbe(w http.ResponseWriter, r *http.Request) {
 			result = json.RawMessage(data)
 		}
 	} else {
-		report := s.vmacHTTPS(ctx, address, body)
+		report := s.vmacHTTPS(ctx, address, body, !body)
 		if strings.HasPrefix(input.Key, "claude-") {
 			parseVMacTrace(&report)
 		}

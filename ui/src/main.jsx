@@ -2103,7 +2103,6 @@ function App() {
           }
           onClose={() => setSafetyOpen(false)}
           onSettings={openSettings}
-          onOpenPage={openBrowserPage}
           onConfirm={confirm}
         />
       )}
