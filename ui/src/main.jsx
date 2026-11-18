@@ -2112,6 +2112,8 @@ function App() {
     </SafetyChecklistContext.Provider>
   );
 }
+// The unlock and setup screens render before the workbench; theme them from the start.
+if (window.cageNativeVMWorkbench) document.documentElement.classList.add("vmac-theme");
 export default function Workbench() {
   const nativeWorkbench = window.cageNativeVMWorkbench;
   return <AccountProvider><AppearanceProvider><AccountGate>

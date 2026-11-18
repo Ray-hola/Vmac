@@ -133,6 +133,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         let root = window.contentView!
         let content = NSView()
         content.translatesAutoresizingMaskIntoConstraints = false
+        content.wantsLayer = nativeVMWorkbench
         guestContent = content
         if nativeVMWorkbench {
             let savedWidth = UserDefaults.standard.object(forKey: "vmac.nativeSidebarWidth") as? Double ?? 176
@@ -382,6 +383,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     }
 
     private func selectGuestDestination(_ destination: String) {
+        if destination == "settings" { settings(); return }
         if destination != "start" && destination != "restart" {
             guestDestination = destination
             guestSidebar?.select(destination)
@@ -390,7 +392,17 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         let quoted = String(data: try! JSONSerialization.data(withJSONObject: [destination]), encoding: .utf8)!
         webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('cage-guest-navigate', {detail: \(quoted)[0]}));", completionHandler: nil)
     }
+    /// Cross-fades the content area when it switches between the workbench page and the guest desktop.
+    private func fadeGuestContent() {
+        guard nativeVMWorkbench, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer = guestContent?.layer else { return }
+        let transition = CATransition()
+        transition.type = .fade
+        transition.duration = 0.18
+        transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(transition, forKey: "vmac-content-fade")
+    }
     private func showGuestControls() {
+        if guestDesktopVisible || webView.isHidden { fadeGuestContent() }
         guestDesktopVisible = false
         #if CAGE_EMBEDDED_VM
         if nativeVMWorkbench { hideEmbeddedDesktop() }
@@ -585,6 +597,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             } catch { failure = "原生客机桌面暂不可用" }
             DispatchQueue.main.async {
                 if let failure { reply(nil, failure); return }
+                self.fadeGuestContent()
                 self.guestDesktopVisible = true
                 self.webView.isHidden = true
                 CageDiagnostics.record("Embedded guest view presented in window \(self.window.windowNumber)")
@@ -718,13 +731,13 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         case "guestNavigationStatus":
             guard nativeVMWorkbench else { replyHandler(nil, "此版本不支持原生客机工作台"); return }
             if let destination = body["destination"] as? String,
-               ["desktop", "lifecycle", "space", "proxy"].contains(destination) {
+               ["desktop", "lifecycle", "space", "proxy", "checks"].contains(destination) {
                 guestSidebar?.select(destination == "lifecycle" ? "desktop" : destination)
             }
             guestSidebar?.update(running: body["running"] as? Bool ?? false,
                 ready: body["ready"] as? Bool ?? false, busy: body["busy"] as? Bool ?? false,
                 networkLabel: body["network"] as? String ?? "", failed: body["failed"] as? Bool ?? false,
-                setup: body["setup"] as? Bool ?? false)
+                setup: body["setup"] as? Bool ?? false, activity: body["activity"] as? String ?? "")
             replyHandler(true, nil)
         case "guestTrafficStatus":
             guard nativeVMWorkbench else { replyHandler(nil, "此版本不支持原生客机工作台"); return }

@@ -53,9 +53,8 @@ export function SafetyPanel({
   onOpenPage,
   onConfirm,
   connectionLost = false,
-  extraChecks,
+  inline = false,
 }) {
-  const [section, setSection] = useState("isolation");
   const [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -100,50 +99,41 @@ export function SafetyPanel({
     }
   };
   const open = async (url) => {
-    if (await onOpenPage(url)) onClose();
+    if (await onOpenPage(url)) onClose?.();
   };
-  return (
-    <Modal
-      title={extraChecks ? "环境检测" : "网络与隔离检查"}
-      wide
-      onClose={onClose}
-      footer={section === "isolation" ? (
-        <>
-          <span className="save-note">
-            {busy ? status.job?.message || "正在提交操作…" : "外网关闭时，离线终端和文件仍可使用"}
-          </span>
-          {(online || network.mode === "checking") && (
-            <button onClick={pause}>
-              {network.mode === "checking" ? "取消检测并关闭外网" : "暂停外网"}
-            </button>
-          )}
-          {canRestart && !restartRequired && <button disabled={busy} onClick={() => run(true)}>重启 macOS 客机</button>}
-          <button className="primary" disabled={busy || connectionLost} onClick={() => run(restartRequired)}>
-            {busy ? (
-              <LoaderCircle size={15} className="spin" />
-            ) : (
-              <ShieldCheck size={15} />
-            )}
-            {busy
-              ? status.job?.kind === "restart" ? "正在重启客机" : "检查进行中"
-              : restartRequired
-                ? "重启 macOS 客机"
-              : online
-                ? "暂停外网并重检"
-                : status.ready && safety.gate
-                  ? "重新检测"
-                  : status.vm_running
-                    ? "重新连接并检查"
-                    : "启动并检查"}
-          </button>
-        </>
-      ) : null}
-    >
-      {extraChecks && <div className="vmac-subnav vmac-safety-tabs" role="group" aria-label="环境检测">
-        <button aria-pressed={section === "isolation"} onClick={() => setSection("isolation")}>隔离报告</button>
-        {extraChecks.map(tab=><button key={tab.id} aria-pressed={section === tab.id} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}
-      </div>}
-      {section !== "isolation" ? <div className="modal-body vmac-safety-tools">{extraChecks?.find(tab=>tab.id===section)?.panel}</div> : <div className="modal-body safety-body">
+  const actions = (
+    <>
+      <span className="save-note">
+        {busy ? status.job?.message || "正在提交操作…" : "外网关闭时，离线终端和文件仍可使用"}
+      </span>
+      {(online || network.mode === "checking") && (
+        <button onClick={pause}>
+          {network.mode === "checking" ? "取消检测并关闭外网" : "暂停外网"}
+        </button>
+      )}
+      {canRestart && !restartRequired && <button disabled={busy} onClick={() => run(true)}>重启 macOS 客机</button>}
+      <button className="primary" disabled={busy || connectionLost} onClick={() => run(restartRequired)}>
+        {busy ? (
+          <LoaderCircle size={15} className="spin" />
+        ) : (
+          <ShieldCheck size={15} />
+        )}
+        {busy
+          ? status.job?.kind === "restart" ? "正在重启客机" : "检查进行中"
+          : restartRequired
+            ? "重启 macOS 客机"
+          : online
+            ? "暂停外网并重检"
+            : status.ready && safety.gate
+              ? "重新检测"
+              : status.vm_running
+                ? "重新连接并检查"
+                : "启动并检查"}
+      </button>
+    </>
+  );
+  const body = (
+      <div className={inline ? "safety-body vm-safety-body" : "modal-body safety-body"}>
         {safety.macos_exit_candidate?.ip && <button disabled={busy} onClick={async () => {
           try { if (await bindDetectedMacOSExit(safety.macos_exit_candidate.ip, onConfirm)) setNotice("固定出口已提交，请在保存完成后重启客机并重新检测。"); }
           catch (e) { setError(e.message); }
@@ -332,7 +322,11 @@ export function SafetyPanel({
             </button>
           </div>
         </details>
-      </div>}
-    </Modal>
+      </div>
   );
+  if (inline) return <section className="vm-safety" aria-label="网络与隔离检查">
+    {body}
+    <div className="vm-safety-actions">{actions}</div>
+  </section>;
+  return <Modal title="网络与隔离检查" wide onClose={onClose} footer={actions}>{body}</Modal>;
 }

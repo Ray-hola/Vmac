@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   networkState,
+  isolationSummary,
   reportForSharing,
   isGuestLocalURL,
   canonicalExitPolicy,
@@ -70,6 +71,22 @@ test("only a live gate lease displays networking as allowed", () => {
   assert.equal(networkState(status, now).mode, "unknown");
   status.vm_running = false;
   assert.equal(networkState(status, now).mode, "stopped");
+});
+
+test("only the report matching the live gate is shown as current", () => {
+  const now = Date.now();
+  const report = {
+    id: "report-a", run_id: "run-a", configuration: "config-a",
+    checks: [{ critical: true, state: "passed" }, { critical: false, state: "failed" }],
+  };
+  const gate = { mode: "open", until: new Date(now + 1000).toISOString(), run_id: report.run_id, configuration: report.configuration, report };
+  const status = { vm_running: true, safety: { gate, report } };
+  assert.deepEqual(isolationSummary(status, now), { current: true, passed: 1, total: 1 });
+  assert.deepEqual(isolationSummary(status, now + 2000), { current: false, passed: 1, total: 1 });
+  for (const change of [{ mode: "closed" }, { run_id: "run-b" }, { configuration: "config-b" }, { report: { id: "report-b" } }]) {
+    assert.equal(isolationSummary({ ...status, safety: { gate: { ...gate, ...change }, report } }, now).current, false);
+  }
+  assert.equal(isolationSummary({ ...status, vm_running: false }, now).current, false);
 });
 
 test("shared reports omit identifiers and secret-derived configuration hashes", () => {
