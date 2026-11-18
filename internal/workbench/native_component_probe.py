@@ -21,8 +21,12 @@ def snapshot(receipt=Path('/var/db/cage-components.json')):
             target = item.get('target', '')
             if not target:
                 continue
-            if ('..' in Path(target).parts or not
-                    (target.startswith('/Applications/Cage') or target.startswith('/usr/local/libexec/cage-'))):
+            if ('..' in Path(target).parts or not target.startswith((
+                    '/Applications/VMac Guest Window.app/',
+                    '/Applications/VMac Guest Clipboard.app/',
+                    '/Applications/Cage',
+                    '/usr/local/libexec/cage-',
+            ))):
                 raise ValueError('invalid component target')
             file = Path(target)
             try:

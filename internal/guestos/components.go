@@ -167,7 +167,7 @@ func nativeComponentTarget(source, system string) string {
 		return "bridge/" + name
 	}
 	switch {
-	case strings.HasPrefix(source, "VMac ") && strings.Contains(source, ".app/"):
+	case strings.HasPrefix(source, "VMac Guest Window.app/"), strings.HasPrefix(source, "VMac Guest Clipboard.app/"):
 		return "/Applications/" + source
 	case strings.HasPrefix(source, "project/CageProjectAccess.app/"):
 		return "/Applications/" + strings.TrimPrefix(source, "project/")
@@ -218,7 +218,11 @@ func (m NativeComponentManifest) Validate() error {
 		if file.Target != "" && seen["\x00"+file.Target] {
 			return errors.New("原生组件安装位置重复")
 		}
-		if file.Target != "" && m.System == MacOS && !strings.HasPrefix(file.Target, "/Applications/Cage") && !strings.HasPrefix(file.Target, "/usr/local/libexec/cage-") {
+		if file.Target != "" && m.System == MacOS &&
+			!strings.HasPrefix(file.Target, "/Applications/VMac Guest Window.app/") &&
+			!strings.HasPrefix(file.Target, "/Applications/VMac Guest Clipboard.app/") &&
+			!strings.HasPrefix(file.Target, "/Applications/Cage") &&
+			!strings.HasPrefix(file.Target, "/usr/local/libexec/cage-") {
 			return errors.New("macOS 组件安装位置无效")
 		}
 		if file.Target != "" && m.System == Windows11 && !strings.HasPrefix(file.Target, "bridge/") && !strings.HasPrefix(file.Target, "network/") {
