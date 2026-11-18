@@ -7,10 +7,14 @@ import (
 )
 
 func TestVMacProbeTargetsAndDNSNonces(t *testing.T) {
-	if len(vmacTargets) != 48 {
-		t.Fatalf("catalog drift: %d", len(vmacTargets))
+	counts := map[string]int{}
+	for _, target := range vmacTargets {
+		counts[target.Group]++
 	}
-	for _, bad := range []string{"https://example.org", "../site-0", "site-48", "127.0.0.1", ""} {
+	if len(counts) != 4 || counts["cn"] != 12 || counts["jp"] != 8 || counts["us"] != 24 || counts["gl"] != 16 {
+		t.Fatalf("catalog drift: %v", counts)
+	}
+	for _, bad := range []string{"https://example.org", "../site-0", "site-999", "127.0.0.1", ""} {
 		if value, _ := vmacProbeURL(bad); value != "" {
 			t.Fatalf("arbitrary probe destination accepted: %q", bad)
 		}

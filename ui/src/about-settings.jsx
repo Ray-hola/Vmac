@@ -3,7 +3,7 @@ import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
 import { api, native, nativeAvailable } from "./api";
 import "./about-settings.css";
 
-const repository = "https://github.com/Lee-xeo/Claude-Cage";
+const repository = "https://github.com/Ray-hola/Vmac";
 const sourceMessages = {
   current: "已与主分支同步",
   available: "主分支有新提交",
@@ -22,7 +22,7 @@ const releaseMessages = {
 function RepositoryLink({ kind, onError, children }) {
   const url = `${repository}/${kind === "source" ? "commits/main" : "releases"}`;
   return <a href={url} target="_blank" rel="noopener noreferrer" onClick={async event => {
-    if (!nativeAvailable()) return;
+    if (!window.cageNativeVMWorkbench || !nativeAvailable()) return;
     event.preventDefault();
     try { await native("appReference", { kind }); }
     catch (error) { onError(error.message); }
@@ -46,6 +46,7 @@ function CheckResult({ label, item, source, onError }) {
 }
 
 export function AboutSettings() {
+  const [referenceError, setReferenceError] = useState("");
   if (window.cageNativeVMWorkbench) {
     return <section className="about-settings" aria-label="关于 VMac">
       <div className="section-title"><h3>VMac</h3><p>本机 macOS 虚拟机工作台</p></div>
@@ -53,12 +54,14 @@ export function AboutSettings() {
         <div><dt>当前构建</dt><dd>{window.vmacBuild || "本机构建"}</dd></div>
         <div><dt>应用存储</dt><dd><code>~/.vmac</code></dd></div>
       </dl>
+      <RepositoryLink kind="releases" onError={setReferenceError}>查看 VMac 发行说明与下载</RepositoryLink>
+      {referenceError && <p className="error-message" role="alert">{referenceError}</p>}
     </section>;
   }
-  return <CageAboutSettings />;
+  return <WorkbenchAboutSettings />;
 }
 
-function CageAboutSettings() {
+function WorkbenchAboutSettings() {
   const [build, setBuild] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);

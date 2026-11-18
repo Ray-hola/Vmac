@@ -27,7 +27,7 @@
     "id": "site-4",
     "group": "cn",
     "name": "腾讯QQ",
-    "url": "https://www.qq.com/favicon.ico"
+    "url": "https://mat1.gtimg.com/qqcdn/xw/favicon.ico"
   },
   {
     "id": "site-5",
@@ -36,16 +36,16 @@
     "url": "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico"
   },
   {
+    "id": "site-48",
+    "group": "cn",
+    "name": "飞书",
+    "url": "https://lf-package-cn.feishucdn.com/obj/feishu-static/lark/open/website/favicon.png"
+  },
+  {
     "id": "site-6",
     "group": "cn",
     "name": "小红书",
     "url": "https://fe-static.xhscdn.com/favicon.ico"
-  },
-  {
-    "id": "site-7",
-    "group": "cn",
-    "name": "新浪微博",
-    "url": "https://tva1.sinaimg.cn/favicon.ico"
   },
   {
     "id": "site-8",
@@ -54,16 +54,16 @@
     "url": "https://www.baidu.com/favicon.ico"
   },
   {
-    "id": "site-9",
+    "id": "site-7",
     "group": "cn",
-    "name": "网易",
-    "url": "https://www.163.com/favicon.ico"
+    "name": "新浪微博",
+    "url": "https://tva1.sinaimg.cn/favicon.ico"
   },
   {
     "id": "site-10",
     "group": "cn",
     "name": "淘宝",
-    "url": "https://www.taobao.com/favicon.ico"
+    "url": "https://gw.alicdn.com/imgextra/i4/O1CN01qOI6vB1zaqrBKbyFr_!!6000000006731-73-tps-64-64.ico"
   },
   {
     "id": "site-11",
@@ -96,6 +96,30 @@
     "url": "https://line.me/favicon.ico"
   },
   {
+    "id": "site-49",
+    "group": "jp",
+    "name": "软银",
+    "url": "https://www.softbank.jp/favicon.ico"
+  },
+  {
+    "id": "site-50",
+    "group": "jp",
+    "name": "PixTV",
+    "url": "https://www.pixtv.ai/favicon.ico"
+  },
+  {
+    "id": "site-51",
+    "group": "jp",
+    "name": "Rakuten",
+    "url": "https://www.rakuten.co.jp/favicon.ico"
+  },
+  {
+    "id": "site-52",
+    "group": "jp",
+    "name": "Crunchyroll",
+    "url": "https://crunchyroll.com/cdn-cgi/trace"
+  },
+  {
     "id": "site-16",
     "group": "us",
     "name": "Apple",
@@ -120,58 +144,34 @@
     "url": "https://github.com/generate_204"
   },
   {
-    "id": "site-20",
-    "group": "us",
-    "name": "Cloudflare",
-    "url": "https://1.1.1.1/cdn-cgi/trace"
-  },
-  {
-    "id": "site-21",
-    "group": "us",
-    "name": "Claude",
-    "url": "https://api.anthropic.com/favicon.ico"
-  },
-  {
     "id": "site-22",
     "group": "us",
     "name": "ChatGPT",
     "url": "https://chatgpt.com/cdn-cgi/trace"
   },
   {
+    "id": "site-21",
+    "group": "us",
+    "name": "Claude",
+    "url": "https://api.anthropic.com/cdn-cgi/trace"
+  },
+  {
     "id": "site-23",
     "group": "us",
     "name": "AI Studio",
-    "url": "https://generativelanguage.googleapis.com/favicon.ico"
+    "url": "https://generativelanguage.googleapis.com/generate_204"
   },
   {
-    "id": "site-24",
+    "id": "site-53",
     "group": "us",
-    "name": "Amazon",
-    "url": "https://www.amazon.com/favicon.ico"
+    "name": "Grok",
+    "url": "https://grok.com/cdn-cgi/trace"
   },
   {
-    "id": "site-25",
+    "id": "site-30",
     "group": "us",
-    "name": "Bing",
-    "url": "https://www.bing.com/favicon.ico"
-  },
-  {
-    "id": "site-26",
-    "group": "us",
-    "name": "Steam",
-    "url": "https://store.steampowered.com/favicon.ico"
-  },
-  {
-    "id": "site-27",
-    "group": "us",
-    "name": "Oracle",
-    "url": "https://www.oracle.com/favicon.ico"
-  },
-  {
-    "id": "site-28",
-    "group": "us",
-    "name": "Zoom",
-    "url": "https://st1.zoom.us/favicon.ico"
+    "name": "Instagram",
+    "url": "https://static.cdninstagram.com/rsrc.php/yb/r/hLRJ1GG_y0J.ico"
   },
   {
     "id": "site-29",
@@ -180,10 +180,16 @@
     "url": "https://static.xx.fbcdn.net/rsrc.php/yb/r/hLRJ1GG_y0J.ico"
   },
   {
-    "id": "site-30",
+    "id": "site-54",
     "group": "us",
-    "name": "Instagram",
-    "url": "https://static.cdninstagram.com/rsrc.php/yb/r/hLRJ1GG_y0J.ico"
+    "name": "WhatsApp",
+    "url": "https://static.whatsapp.net/rsrc.php/y1/r/FJbTMJqMap7.svg"
+  },
+  {
+    "id": "site-55",
+    "group": "us",
+    "name": "Discord",
+    "url": "https://discord.com/cdn-cgi/trace"
   },
   {
     "id": "site-31",
@@ -198,22 +204,64 @@
     "url": "https://www.reddit.com/favicon.ico"
   },
   {
-    "id": "site-33",
+    "id": "site-24",
     "group": "us",
-    "name": "LinkedIn",
-    "url": "https://static.licdn.com/favicon.ico"
+    "name": "Amazon",
+    "url": "https://www.amazon.com/favicon.ico"
   },
   {
-    "id": "site-34",
+    "id": "site-56",
     "group": "us",
-    "name": "Twitch",
-    "url": "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png"
+    "name": "PayPal",
+    "url": "https://www.paypalobjects.com/favicon.ico"
+  },
+  {
+    "id": "site-20",
+    "group": "us",
+    "name": "Cloudflare",
+    "url": "https://1.1.1.1/cdn-cgi/trace"
+  },
+  {
+    "id": "site-25",
+    "group": "us",
+    "name": "Bing",
+    "url": "https://www.bing.com/favicon.ico"
+  },
+  {
+    "id": "site-26",
+    "group": "us",
+    "name": "Steam",
+    "url": "https://store.steampowered.com/favicon.ico"
+  },
+  {
+    "id": "site-57",
+    "group": "us",
+    "name": "Xbox",
+    "url": "https://www.xbox.com/favicon.ico"
   },
   {
     "id": "site-35",
     "group": "us",
     "name": "Netflix",
     "url": "https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico"
+  },
+  {
+    "id": "site-58",
+    "group": "us",
+    "name": "Disney+",
+    "url": "https://www.disneyplus.com/favicon.ico"
+  },
+  {
+    "id": "site-28",
+    "group": "us",
+    "name": "Zoom",
+    "url": "https://st1.zoom.us/favicon.ico"
+  },
+  {
+    "id": "site-34",
+    "group": "us",
+    "name": "Twitch",
+    "url": "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png"
   },
   {
     "id": "site-36",
@@ -234,10 +282,10 @@
     "url": "https://registry.npmjs.org/"
   },
   {
-    "id": "site-39",
+    "id": "site-59",
     "group": "gl",
-    "name": "Takealot",
-    "url": "https://static.takealot.com/favicon.ico"
+    "name": "jsDelivr",
+    "url": "https://cdn.jsdelivr.net/favicon.ico"
   },
   {
     "id": "site-40",
@@ -246,22 +294,10 @@
     "url": "https://www.pixpix.com/favicon.ico"
   },
   {
-    "id": "site-41",
+    "id": "site-60",
     "group": "gl",
-    "name": "Naver",
-    "url": "https://www.naver.com/favicon.ico"
-  },
-  {
-    "id": "site-42",
-    "group": "gl",
-    "name": "Noon",
-    "url": "https://www.noon.com/favicon.ico"
-  },
-  {
-    "id": "site-43",
-    "group": "gl",
-    "name": "Wikipedia",
-    "url": "https://www.wikipedia.org/static/favicon/wikipedia.ico"
+    "name": "DeepL",
+    "url": "https://deepl.com/cdn-cgi/trace"
   },
   {
     "id": "site-44",
@@ -270,10 +306,46 @@
     "url": "https://www.bbc.com/favicon.ico"
   },
   {
+    "id": "site-42",
+    "group": "gl",
+    "name": "Noon",
+    "url": "https://www.noon.com/favicon.ico"
+  },
+  {
+    "id": "site-61",
+    "group": "gl",
+    "name": "Shopee",
+    "url": "https://shopee.sg/favicon.ico"
+  },
+  {
+    "id": "site-62",
+    "group": "gl",
+    "name": "Booking",
+    "url": "https://cf.bstatic.com/favicon.ico"
+  },
+  {
+    "id": "site-43",
+    "group": "gl",
+    "name": "Wikipedia",
+    "url": "https://www.wikipedia.org/static/favicon/wikipedia.ico"
+  },
+  {
+    "id": "site-41",
+    "group": "gl",
+    "name": "Naver",
+    "url": "https://www.naver.com/favicon.ico"
+  },
+  {
     "id": "site-45",
     "group": "gl",
     "name": "Mistral AI",
-    "url": "https://mistral.ai/favicon.ico"
+    "url": "https://mistral.ai/cdn-cgi/trace"
+  },
+  {
+    "id": "site-39",
+    "group": "gl",
+    "name": "Takealot",
+    "url": "https://static.takealot.com/favicon.ico"
   },
   {
     "id": "site-46",
@@ -285,6 +357,6 @@
     "id": "site-47",
     "group": "gl",
     "name": "MercadoLibre",
-    "url": "https://http2.mlstatic.com/favicon.ico"
+    "url": "https://http2.mlstatic.com/ui/navigation/5.18.1/mercadolibre/favicon.ico"
   }
 ]

@@ -256,16 +256,6 @@ export function NativeGuestHome({ setup = null }) {
     } catch (failure) { setError(failure.message); }
     finally { setRequest(false); }
   };
-  async function openGuestPage(url) {
-    try {
-      await api("/browser/tabs", { url });
-      await openDesktop();
-      return true;
-    } catch (failure) {
-      setError(failure.message);
-      return false;
-    }
-  }
   async function stop() {
     if (!latest.current?.vm_running || request || latest.current.job?.running) return;
     if (!await confirm({ title: "停止 macOS 客机？", body: "请先保存客机中的工作。停止后客机文件和登录资料会保留，可随时再次启动。", confirm: "停止客机" })) return;
@@ -326,7 +316,7 @@ export function NativeGuestHome({ setup = null }) {
           </> : <VMProfiles status={status} onConfirm={confirm} />}
         </div>
       </> : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
-          onConfirm={confirm} onSettings={openSettings} onOpenPage={openGuestPage} onInstall={setup && !installed ? () => navigate("desktop") : undefined} />
+          onConfirm={confirm} onSettings={openSettings} onInstall={setup && !installed ? () => navigate("desktop") : undefined} />
       : <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}
           onApplied={() => pollNow.current?.()} onChecks={() => navigate("checks", "gateway")} protection={protection} />}
     </div>}
