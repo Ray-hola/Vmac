@@ -1,7 +1,7 @@
 {
   "name": "vmac-workbench",
   "private": true,
-  "version": "0.1.8",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "prepare-vnc": "node scripts/prepare-vnc.mjs",

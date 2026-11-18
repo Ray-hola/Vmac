@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
     exit 1
 }
 version=$(tr -d '\r\n' < VERSION)
-build=${VMAC_BUILD_NUMBER:-32}
+build=${VMAC_BUILD_NUMBER:-34}
 identity=${VMAC_SIGNING_IDENTITY:--}
 destination=${VMAC_BUILD_OUTPUT:-$PWD/_output/VMac.app}
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $build =~ ^[0-9]+$ ]] || exit 2

@@ -8,6 +8,10 @@ VMac 是 Apple Silicon Mac 上的 macOS 虚拟机工作台。客机画面通过 
 - **代理管理**提供 Mihomo 节点、订阅和流量；**环境检测**集中显示隔离报告、网关保护，以及 Claude 和站点连通检测。各客机共用 VMac 的代理设置，实际连接状态按当前客机显示。
 - 每台客机都有独立的磁盘、安装进度和文件授权。VMac 的原生工作台支持手动上传文件及文字、图片剪贴板同步。
 
+## 下载
+
+从 [GitHub Releases](https://github.com/Ray-hola/Vmac/releases/latest) 获取 Apple Silicon 版应用、校验文件和发行说明。
+
 ## 构建
 
 使用 Apple Silicon Mac，准备 Xcode Command Line Tools、Go（版本见 [go.mod](go.mod)）、Node.js 和 Python 3。SSHFS 的构建还需要与 [依赖锁定文件](scripts/guest-os/macos-sshfs-dependencies.json) 一致的 Homebrew GLib、gettext 和 PCRE2。其余构建步骤见 [构建脚本](scripts/build-vmac.sh)。
