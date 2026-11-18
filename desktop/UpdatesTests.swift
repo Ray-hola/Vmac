@@ -22,6 +22,21 @@ enum UpdatesTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("cage-updates-test-" + UUID().uuidString)
         try CageUpdateFiles.privateDirectory(root)
         defer { try? FileManager.default.removeItem(at: root) }
+        let vmac = CageUpdateProduct.find("cn.ovenray.vmac")
+        try expect(vmac?.name == "VMac" && vmac?.backend == "vmac" && vmac?.versionKey == "CFBundleShortVersionString", "VMac update identity")
+        try expect(CageUpdateProduct.find("cn.ovenray.vmac.preview") == nil, "test builds cannot acquire a product identity")
+        let unsignedVMac = root.appendingPathComponent("VMac.app")
+        let vmacContents = unsignedVMac.appendingPathComponent("Contents")
+        let executables = vmacContents.appendingPathComponent("MacOS")
+        try CageUpdateFiles.privateDirectory(executables)
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: CommandLine.arguments[0]), to: executables.appendingPathComponent("VMac"))
+        try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": CageProfile.vmacBundleID, "CFBundleExecutable": "VMac",
+                                                               "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "1.1.0"], format: .xml, options: 0)
+            .write(to: vmacContents.appendingPathComponent("Info.plist"))
+        _ = try CageUpdateFiles.run("/usr/bin/codesign", ["--force", "--sign", "-", unsignedVMac.path])
+        try rejects("an ad-hoc VMac must not become an update trust anchor") {
+            _ = try CageUpdateFiles.signingInfo(unsignedVMac, bundle: true, product: .vmac)
+        }
         do {
             let saved = ProcessInfo.processInfo.environment["CLAUDE_CAGE_CONFIG"]
             let directory = FileManager.default.currentDirectoryPath

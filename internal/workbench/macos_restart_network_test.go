@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Ray-hola/Vmac/internal/cage"
+	"github.com/Ray-hola/Vmac/internal/guestos"
 	"github.com/Ray-hola/Vmac/internal/managedproxy"
 	"golang.org/x/crypto/ssh"
 )
@@ -89,10 +90,20 @@ func TestMacOSStartAndControllerReconnectRequireFreshNetworkCheck(t *testing.T) 
 		{"controller adopts unfinished setup", false, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			g := newMacWorkspaceGuest(t, func(_ ssh.Channel, command string) (uint32, bool) {
+			kit := macMaintenanceKit(t)
+			manifest, err := guestos.RequiredNativeComponents(kit, guestos.MacOS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g := newMacWorkspaceGuest(t, func(ch ssh.Channel, command string) (uint32, bool) {
+				if strings.Contains(command, "cage-components.json") {
+					fmt.Fprintf(ch, `{"protocol":%d,"revision":%q,"system":"macos"}`, manifest.Protocol, manifest.Revision)
+					return 0, true
+				}
 				return 0, strings.Contains(command, "uname -s")
 			})
 			s := g.s
+			s.exe = filepath.Join(filepath.Dir(kit), "cage")
 			s.ready = false
 			if tc.setup {
 				s.macosGuest.SetupID = "awaiting-first-setup"
@@ -140,7 +151,6 @@ func TestMacOSStartAndControllerReconnectRequireFreshNetworkCheck(t *testing.T) 
 				if err := os.Remove(marker); err != nil {
 					t.Fatal(err)
 				}
-				s.exe = filepath.Join(t.TempDir(), "cage")
 				script := fmt.Sprintf("#!/bin/sh\n[ \"$*\" = 'guest-os macos start' ] || exit 1\nprintf '{\"pid\":%d}' > '%s'\n", os.Getpid(), marker)
 				if err := os.WriteFile(s.exe, []byte(script), 0700); err != nil {
 					t.Fatal(err)

@@ -11,6 +11,7 @@ import (
 	"github.com/Ray-hola/Vmac/internal/cage"
 	"github.com/Ray-hola/Vmac/internal/managedproxy"
 	"github.com/Ray-hola/Vmac/internal/paths"
+	"github.com/Ray-hola/Vmac/internal/version"
 )
 
 var (
@@ -467,7 +468,11 @@ func (s *Server) proxyLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	// Whitelisted lifecycle messages avoid publishing upstream raw log lines,
 	// which can contain subscription secrets, credentials and host paths.
-	lines := []string{"客机公网 UDP、IPv6、ICMP：阻断", "业务 DNS：经选定节点转发", "代理基础设施 DNS：" + strings.Join(managedproxy.BootstrapDNSURLs(), "、") + "（主机网络，并行查询）"}
+	udpPolicy := "客机公网 UDP：阻断"
+	if version.MacOSGuestOnly && s.macosGuest != nil {
+		udpPolicy = "客机公网 IPv4 UDP：门禁放行后经选定代理节点转发，节点不可用时无直连回退"
+	}
+	lines := []string{udpPolicy, "客机公网 IPv6、ICMP：阻断", "业务 DNS：经选定节点转发", "代理基础设施 DNS：" + strings.Join(managedproxy.BootstrapDNSURLs(), "、") + "（主机网络，并行查询）"}
 	if managedproxy.Running(r.Context(), s.profile, p) {
 		lines = append(lines, "内置核心运行中；已读回当前节点选择")
 	} else {

@@ -30,8 +30,15 @@ import (
 	"github.com/Ray-hola/Vmac/internal/version"
 )
 
-const repository = catalog.Repository
-const releasesURL = catalog.ReleasesURL
+var repository = func() string {
+	if version.MacOSGuestOnly {
+		return catalog.VMacRepository
+	}
+	return catalog.Repository
+}()
+
+var releasesURL = repositoryAPI + "/releases?per_page=100"
+
 const maxArchive = catalog.MaxArchive
 const metadataTimeout = 2 * time.Minute
 
@@ -105,6 +112,11 @@ func Run(configPath string, args []string, output io.Writer) int {
 		return 0
 	}
 	state.LatestVersion = c.Version
+	if version.MacOSGuestOnly && strings.HasSuffix(c.Archive.Name, ".zip") {
+		state.Phase, state.Message = "manual", "此版本提供手动安装包。"
+		emit()
+		return 0
+	}
 	if args[0] == "check" {
 		state.Phase, state.Message = "available", "发现新版本，可下载更新"
 		emit()
@@ -135,7 +147,9 @@ func Run(configPath string, args []string, output io.Writer) int {
 		return fail(errors.New("更新下载任务必须是私有普通目录"))
 	}
 	localName := "Cage.dmg"
-	if runtime.GOOS == "windows" {
+	if version.MacOSGuestOnly {
+		localName = "VMac.dmg"
+	} else if runtime.GOOS == "windows" {
 		localName = "Cage-setup.exe"
 	}
 	archive := filepath.Join(job, localName)
@@ -216,7 +230,7 @@ func request(ctx context.Context, client *http.Client, raw string) (*http.Respon
 func requestFrom(ctx context.Context, client *http.Client, raw string, offset int64) (*http.Response, error) {
 	u, err := url.Parse(raw)
 	if err != nil || !allowedURL(u, false) {
-		return nil, errors.New("更新地址不属于 Cage 的受信发布源")
+		return nil, errors.New("更新地址不属于当前应用的受信发布源")
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", raw, nil)
 	if err != nil {
@@ -247,7 +261,7 @@ func requestFrom(ctx context.Context, client *http.Client, raw string, offset in
 			if strings.Contains(u.Path, "/compare/") {
 				return nil, errors.New("当前构建提交未被源码仓库收录，无法核对提交关系")
 			}
-			return nil, errors.New("更新源找不到请求的版本或安装包（HTTP 404）。请稍后检查更新；需要手动安装时，请核对 Cage 发布页面中的对应平台文件。")
+			return nil, errors.New("更新源找不到请求的版本或安装包（HTTP 404）。请稍后检查更新；需要手动安装时，请核对应用发布页面中的对应平台文件。")
 		case 403, 429:
 			return nil, updateSourceError(resp, time.Now())
 		default:
@@ -285,6 +299,9 @@ func findRelease(ctx context.Context, client *http.Client, current string) (*can
 	var releases []release
 	if json.Unmarshal(b, &releases) != nil {
 		return nil, errors.New("更新源返回了无效的版本信息")
+	}
+	if version.MacOSGuestOnly {
+		return catalog.SelectVMac(releases, current, runtime.GOOS, runtime.GOARCH)
 	}
 	return catalog.Select(releases, current, runtime.GOOS, runtime.GOARCH)
 }

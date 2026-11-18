@@ -38,9 +38,10 @@ if [[ -e $agent || -L $agent ]]; then
     [[ -f $agent && ! -L $agent && $(stat -f %u "$agent") == "$uid" ]] || exit 2
     if ! cmp -s "$agent" "$temp"; then
         if ! cmp -s "$agent" "$legacy"; then
-            # Accept the exact previous executable entry as a migration source.
+            # Replace the whole array: some plutil versions insert at an index
+            # when -replace is applied to an array element.
             previous='/Applications/Cage Guest Window.app/Contents/MacOS/CageGuestWindow'
-            plutil -replace ProgramArguments.0 -string "$previous" "$legacy"
+            plutil -replace ProgramArguments -xml "<array><string>$previous</string></array>" "$legacy"
             if ! cmp -s "$agent" "$legacy"; then
                 plutil -insert RunAtLoad -bool true "$legacy"
                 plutil -insert KeepAlive -bool true "$legacy"

@@ -6,8 +6,10 @@ cd "$(dirname "$0")/.."
     exit 1
 }
 version=$(tr -d '\r\n' < VERSION)
-build=${VMAC_BUILD_NUMBER:-34}
+build=${VMAC_BUILD_NUMBER:-39}
 identity=${VMAC_SIGNING_IDENTITY:--}
+signed_update=false
+if [[ $identity != - ]]; then signed_update=true; fi
 destination=${VMAC_BUILD_OUTPUT:-$PWD/_output/VMac.app}
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $build =~ ^[0-9]+$ ]] || exit 2
 [[ $destination == /*.app && ! -e $destination && ! -L $destination ]] || {
@@ -75,6 +77,9 @@ xcrun swiftc -sdk "$SDKROOT" -module-cache-path "$CLANG_MODULE_CACHE_PATH" -D CA
     -framework LocalAuthentication -framework Virtualization -framework IOKit -framework SystemConfiguration -lresolv -lc++ \
     desktop/Cage.swift desktop/GuestSidebar.swift desktop/MacKeyboard.swift desktop/NativeInput.swift desktop/Updates.swift \
     desktop/AccountDevice.swift desktop/MacGuestLogin.swift "$stage/libVMac.a" -o "$bundle/Contents/MacOS/VMac"
+xcrun swiftc -sdk "$SDKROOT" -module-cache-path "$CLANG_MODULE_CACHE_PATH" \
+    -O -target arm64-apple-macosx14.0 -parse-as-library -framework Cocoa -framework Security \
+    desktop/Updates.swift desktop/UpdateInstaller.swift -o "$resources/CageUpdateInstaller"
 
 xcrun swiftc -sdk "$SDKROOT" -target arm64-apple-macosx14.0 -module-cache-path "$CLANG_MODULE_CACHE_PATH" \
     desktop/VMacLogo.swift -o "$stage/render-logo"
@@ -100,6 +105,7 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
 <key>CFBundleIconFile</key><string>VMac.icns</string>
 <key>CFBundleVersion</key><string>$build</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
+<key>VMacSignedUpdate</key><$signed_update/>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
@@ -110,6 +116,7 @@ sign=(codesign --force --sign "$identity")
 if [[ $identity != - ]]; then sign+=(--timestamp --options runtime); fi
 "${sign[@]}" --entitlements third_party/lima/vz.entitlements "$resources/vmac"
 "${sign[@]}" "$resources/mihomo"
+"${sign[@]}" "$resources/CageUpdateInstaller"
 "${sign[@]}" --entitlements third_party/lima/vz.entitlements "$bundle"
 codesign --verify --deep --strict "$bundle"
 for check in verify-web-assets verify-vm-assets verify-macos-guest; do

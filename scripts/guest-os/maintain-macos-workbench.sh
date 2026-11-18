@@ -86,7 +86,23 @@ for app in "$kit"/*.app "$kit"/project/*.app; do
         # is fully verified, and an existing signing team remains a constraint.
         previous_team=$(codesign -dv "$target" 2>&1 | sed -n 's/^TeamIdentifier=//p' || true)
         next_team=$(codesign -dv "$app" 2>&1 | sed -n 's/^TeamIdentifier=//p')
-        [[ -z $previous_team || $previous_team == not\ set || $previous_team == "$next_team" ]] || exit 1
+        if [[ -n $previous_team && $previous_team != 'not set' && $previous_team != "$next_team" ]]; then
+            # Only this helper migrates from the original Cage publisher to
+            # the trusted host application's VMac kit.
+            legacy_requirement='=anchor apple generic and identifier "dev.cage.guest.project-access" and certificate leaf[subject.OU] = "WBR2J2NFHN" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
+            if [[ $target != /Applications/CageProjectAccess.app || $identifier != dev.cage.guest.project-access || $previous_team != WBR2J2NFHN || $(stat -f %u "$target") != 0 ]] ||
+                ! codesign --verify --deep --strict -R "$legacy_requirement" "$target"; then
+                printf '客机组件签名不兼容：%s。\n' "$(basename "$target")" >&2
+                exit 1
+            fi
+            if [[ $next_team != 'not set' ]]; then
+                if [[ ! $next_team =~ ^[A-Z0-9]{10}$ ]] || ! codesign --verify --deep --strict \
+                    -R "=anchor apple generic and identifier \"$identifier\" and certificate leaf[subject.OU] = \"$next_team\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists" "$app"; then
+                    printf '无法验证新版客机组件发布者：%s。\n' "$(basename "$target")" >&2
+                    exit 1
+                fi
+            fi
+        fi
     fi
     index=${#apps[@]}
     ditto "$app" "$backup/new-app-$index"

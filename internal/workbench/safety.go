@@ -24,6 +24,7 @@ import (
 	"github.com/Ray-hola/Vmac/internal/exitpolicy"
 	"github.com/Ray-hola/Vmac/internal/paths"
 	"github.com/Ray-hola/Vmac/internal/usererror"
+	"github.com/Ray-hola/Vmac/internal/version"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -647,6 +648,14 @@ func (s *Server) runSafetyCheck() (returned error) {
 	}()
 	if err := s.attach(); err != nil {
 		return err
+	}
+	if version.MacOSGuestOnly && s.macosGuest != nil {
+		s.mu.Lock()
+		needsSync := s.guestUpdateRequired
+		s.mu.Unlock()
+		if needsSync {
+			return errMacOSComponentUpdate
+		}
 	}
 	cfg, err := loadConfig(s.configPath)
 	if err != nil {

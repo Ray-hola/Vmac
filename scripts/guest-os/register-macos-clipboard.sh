@@ -31,7 +31,7 @@ if [[ -e $agent || -L $agent ]]; then
     [[ -f $agent && ! -L $agent && $(stat -f %u "$agent") == "$uid" ]] || exit 2
     if ! cmp -s "$agent" "$temp"; then
         cp "$temp" "$previous"
-        plutil -replace ProgramArguments.0 -string '/Applications/Cage Guest Clipboard.app/Contents/MacOS/CageGuestClipboard' "$previous"
+        plutil -replace ProgramArguments -xml '<array><string>/Applications/Cage Guest Clipboard.app/Contents/MacOS/CageGuestClipboard</string></array>' "$previous"
         if ! cmp -s "$agent" "$previous"; then
             echo 'An existing clipboard LaunchAgent has different settings.' >&2
             exit 2

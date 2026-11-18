@@ -125,6 +125,16 @@ func (s *Server) nativeMaintenancePreflight() error {
 }
 
 func (s *Server) maintainNativeComponents(tools bool) error {
+	if err := s.syncNativeComponents(tools); err != nil {
+		return err
+	}
+	if err := s.attach(); err != nil {
+		return err
+	}
+	return s.checkNetworkIfWanted()
+}
+
+func (s *Server) syncNativeComponents(tools bool) error {
 	if err := s.nativeMaintenancePreflight(); err != nil {
 		return err
 	}
@@ -182,12 +192,10 @@ func (s *Server) maintainNativeComponents(tools bool) error {
 	if err != nil || snapshot.Manifest == nil || !snapshot.Installed || snapshot.Manifest.Revision != manifest.Revision || snapshot.Manifest.Protocol != manifest.Protocol {
 		return errors.New("更新后的客机组件未通过实际文件核验，请保留环境并重试同步组件。")
 	}
-	if err = s.attach(); err != nil {
-		return err
-	}
 	s.mu.Lock()
+	s.macComponentsChecked = system == guestos.MacOS
 	s.guestUpdateRequired = false
 	s.guestUpdateError = ""
 	s.mu.Unlock()
-	return s.checkNetworkIfWanted()
+	return nil
 }

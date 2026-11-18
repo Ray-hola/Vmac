@@ -4,29 +4,37 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Ray-hola/Vmac/internal/appupdate/catalog"
 	"github.com/Ray-hola/Vmac/internal/host"
+	"github.com/Ray-hola/Vmac/internal/version"
 )
 
 func fixtureRelease(v string, pre bool) release {
 	return release{Tag: "v" + v, Prerelease: pre, Assets: []asset{{Name: "Cage-" + v + "-macos-arm64.dmg", URL: "https://github.com/" + repository + "/releases/download/v" + v + "/Cage-" + v + "-macos-arm64.dmg", Size: 3, Digest: "sha256:" + strings.Repeat("a", 64), State: "uploaded"}}}
 }
+func legacyFixtureRelease(v string, pre bool) release {
+	r := fixtureRelease(v, pre)
+	r.Assets[0].URL = strings.Replace(r.Assets[0].URL, repository, catalog.Repository, 1)
+	return r
+}
 func TestReleaseSelectionPreservesChannelsAndNumericPrereleases(t *testing.T) {
-	rs := []release{fixtureRelease("0.2.0-alpha.9", true), fixtureRelease("0.2.0-alpha.10", true), fixtureRelease("0.1.0", false)}
+	rs := []release{legacyFixtureRelease("0.2.0-alpha.9", true), legacyFixtureRelease("0.2.0-alpha.10", true), legacyFixtureRelease("0.1.0", false)}
 	c, err := catalog.Select(rs, "0.2.0-alpha.1", "darwin", "arm64")
 	if err != nil || c == nil || c.Version != "0.2.0-alpha.10" {
 		t.Fatalf("selected %#v: %v", c, err)
 	}
-	rs = append(rs, fixtureRelease("0.2.0", false), fixtureRelease("0.3.0-alpha.1", true))
+	rs = append(rs, legacyFixtureRelease("0.2.0", false), legacyFixtureRelease("0.3.0-alpha.1", true))
 	c, err = catalog.Select(rs, "0.1.0", "darwin", "arm64")
 	if err != nil || c == nil || c.Version != "0.2.0" {
 		t.Fatalf("stable channel %#v: %v", c, err)
@@ -44,10 +52,46 @@ func TestRejectReleaseAssetOutsideRepositoryOrOversize(t *testing.T) {
 		func(r *release) { r.Draft = true },
 		func(r *release) { r.Assets[0].Digest = "" },
 	} {
-		r := fixtureRelease("0.2.0", false)
+		r := legacyFixtureRelease("0.2.0", false)
 		mutate(&r)
 		if c, err := catalog.Select([]release{r}, "0.1.0", "darwin", "arm64"); err != nil || c != nil {
 			t.Fatalf("accepted %#v: %v", c, err)
+		}
+	}
+}
+
+func TestVMacSelectsItsOwnUpdateAssets(t *testing.T) {
+	base := "https://github.com/" + catalog.VMacRepository + "/releases/download/v1.1.0/"
+	archive := asset{Name: "VMac-1.1.0-macos-arm64.zip", Size: 10, Digest: "sha256:" + strings.Repeat("a", 64), State: "uploaded"}
+	archive.URL = base + archive.Name
+	image := archive
+	image.Name, image.URL = "VMac-1.1.0-macos-arm64.dmg", base+"VMac-1.1.0-macos-arm64.dmg"
+	other := image
+	other.URL = strings.Replace(image.URL, catalog.VMacRepository, catalog.Repository, 1)
+	for _, tc := range []struct {
+		assets []asset
+		want   string
+	}{{[]asset{archive, other}, archive.Name}, {[]asset{archive, image}, image.Name}, {[]asset{other}, ""}} {
+		releases := []release{{Tag: "v1.1.0", Assets: tc.assets}, legacyFixtureRelease("2.0.0", false)}
+		check := func(c *candidate, err error) {
+			t.Helper()
+			if err != nil || (tc.want == "" && c != nil) || (tc.want != "" && (c == nil || c.Archive.Name != tc.want)) {
+				t.Fatalf("want %q, selected %+v: %v", tc.want, c, err)
+			}
+		}
+		check(catalog.SelectVMac(releases, "1.0.0", "darwin", "arm64"))
+		if version.MacOSGuestOnly && runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+			data, err := json.Marshal(releases)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+				if r.URL.String() != "https://api.github.com/repos/"+catalog.VMacRepository+"/releases?per_page=100" {
+					t.Fatalf("unexpected update source: %s", r.URL)
+				}
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(data)), Request: r}, nil
+			})}
+			check(findRelease(context.Background(), client, "1.0.0"))
 		}
 	}
 }

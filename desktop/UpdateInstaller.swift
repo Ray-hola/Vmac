@@ -5,6 +5,7 @@ import Darwin
 final class CageUpdateInstaller: NSObject, NSApplicationDelegate {
     private var plan: CageUpdatePlan!
     private var parent: NSRunningApplication!
+    private var product: CageUpdateProduct!
     private var manager = FileManager.default
     private var didReplace = false
     private var originalVersion = ""
@@ -47,21 +48,23 @@ final class CageUpdateInstaller: NSObject, NSApplicationDelegate {
         guard data.count <= 16384 else { throw CageUpdateError("安装任务过大") }
         plan = try JSONDecoder().decode(CageUpdatePlan.self, from: data)
         guard plan.parentPID == getppid(), let running = NSRunningApplication(processIdentifier: plan.parentPID),
+              let product = CageUpdateProduct.find(running.bundleIdentifier),
               running.bundleURL?.resolvingSymlinksInPath().path == plan.target else { throw CageUpdateError("安装任务不属于当前 VMac 应用") }
         parent = running
+        self.product = product
         let selfURL = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         let ownTeam = try CageUpdateFiles.signingInfo(selfURL, bundle: false)
         guard ownTeam == plan.team,
-              URL(fileURLWithPath: plan.candidate).resolvingSymlinksInPath().path == directory.appendingPathComponent("Cage.app").path,
+              URL(fileURLWithPath: plan.candidate).resolvingSymlinksInPath().path == directory.appendingPathComponent(product.name + ".app").path,
               plan.backup == directory.appendingPathComponent("previous.app").path,
               plan.resultPath == directory.deletingLastPathComponent().appendingPathComponent("last-result.json").path,
               selfURL.deletingLastPathComponent() == directory else { throw CageUpdateError("安装任务路径或签名不匹配") }
         let target = URL(fileURLWithPath: plan.target)
         guard target == target.resolvingSymlinksInPath(), target.pathExtension == "app", !target.path.hasPrefix("/Volumes/") else { throw CageUpdateError("安装位置不支持自动更新") }
-        _ = try CageUpdateFiles.signingInfo(target, bundle: true, expectedTeam: ownTeam)
-        try CageUpdateFiles.verifyApp(URL(fileURLWithPath: plan.candidate), version: plan.version, team: ownTeam)
+        _ = try CageUpdateFiles.signingInfo(target, bundle: true, expectedTeam: ownTeam, product: product)
+        try CageUpdateFiles.verifyApp(URL(fileURLWithPath: plan.candidate), version: plan.version, team: ownTeam, product: product)
         let info = try PropertyListSerialization.propertyList(from: Data(contentsOf: target.appendingPathComponent("Contents/Info.plist")), format: nil) as? [String: Any]
-        guard let current = info?["CageVersion"] as? String, CageUpdateVersion.isNewer(plan.version, than: current) else { throw CageUpdateError("更新版本必须高于当前安装版本") }
+        guard let current = info?[product.versionKey] as? String, CageUpdateVersion.isNewer(plan.version, than: current) else { throw CageUpdateError("更新版本必须高于当前安装版本") }
         originalVersion = current
     }
     private func prepare() {
@@ -70,7 +73,7 @@ final class CageUpdateInstaller: NSObject, NSApplicationDelegate {
                 let backup = URL(fileURLWithPath: self.plan.backup)
                 if FileManager.default.fileExists(atPath: backup.path) { try FileManager.default.removeItem(at: backup) }
                 try FileManager.default.copyItem(at: URL(fileURLWithPath: self.plan.target), to: backup)
-                _ = try CageUpdateFiles.signingInfo(backup, bundle: true, expectedTeam: self.plan.team)
+                _ = try CageUpdateFiles.signingInfo(backup, bundle: true, expectedTeam: self.plan.team, product: self.product)
                 self.send(["status": "ready"])
                 let command = FileHandle.standardInput.readDataToEndOfFile()
                 guard command == Data("COMMIT\n".utf8) else { self.exitHelper(); return }
@@ -88,10 +91,10 @@ final class CageUpdateInstaller: NSObject, NSApplicationDelegate {
     private func replace() throws {
         let target = URL(fileURLWithPath: plan.target)
         let candidate = URL(fileURLWithPath: plan.candidate)
-        _ = try CageUpdateFiles.signingInfo(target, bundle: true, expectedTeam: plan.team)
-        try CageUpdateFiles.verifyApp(candidate, version: plan.version, team: plan.team)
+        _ = try CageUpdateFiles.signingInfo(target, bundle: true, expectedTeam: plan.team, product: product)
+        try CageUpdateFiles.verifyApp(candidate, version: plan.version, team: plan.team, product: product)
         try CageUpdateFiles.replaceAndVerify(target: target, candidate: candidate, backup: URL(fileURLWithPath: plan.backup), manager: manager, onReplace: { self.didReplace = true }) {
-            try CageUpdateFiles.verifyApp($0, version: plan.version, team: plan.team)
+            try CageUpdateFiles.verifyApp($0, version: plan.version, team: plan.team, product: product)
         }
     }
     private func openInstalled() {
@@ -101,6 +104,7 @@ final class CageUpdateInstaller: NSObject, NSApplicationDelegate {
         let token = UUID().uuidString
         var environment = inheritedProfile(); environment["CAGE_UPDATE_CONFIRMATION"] = token
         configuration.environment = environment
+        configuration.arguments = relaunchArguments()
         NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: plan.target), configuration: configuration) { app, error in
             guard error == nil, let app else { self.recover("新版本未能启动，正在恢复原应用"); return }
             let acknowledgement = URL(fileURLWithPath: self.plan.resultPath).deletingLastPathComponent().appendingPathComponent("launch-\(token).json")
@@ -130,24 +134,34 @@ final class CageUpdateInstaller: NSObject, NSApplicationDelegate {
         if let path = ProcessInfo.processInfo.environment["CLAUDE_CAGE_CONFIG"] { return ["CLAUDE_CAGE_CONFIG": path] }
         return [:]
     }
+    private func relaunchArguments() -> [String] {
+        guard product.bundleID == CageProfile.vmacBundleID,
+              let config = inheritedProfile()["CLAUDE_CAGE_CONFIG"] else { return [] }
+        let profile = URL(fileURLWithPath: config).deletingLastPathComponent()
+        if profile.path == CageProfile.profileRoot.path { return ["--vmac-profile", CageProfile.defaultProfile] }
+        let id = profile.lastPathComponent
+        guard profile.deletingLastPathComponent().path == CageProfile.profileRoot.appendingPathComponent("vms").path,
+              id.range(of: "^[a-f0-9]{8}$", options: .regularExpression) != nil else { return [] }
+        return ["--vmac-profile", id]
+    }
     private func recover(_ reason: String) {
         DispatchQueue.global(qos: .userInitiated).async {
             var message = reason
             var canOpen = false
             let target = URL(fileURLWithPath: self.plan.target), backup = URL(fileURLWithPath: self.plan.backup)
             do {
-                let originalIntact = (try? CageUpdateFiles.verifyApp(target, version: self.originalVersion, team: self.plan.team, gatekeeper: false)) != nil
+                let originalIntact = (try? CageUpdateFiles.verifyApp(target, version: self.originalVersion, team: self.plan.team, gatekeeper: false, product: self.product)) != nil
                 if self.didReplace || !originalIntact {
-                    try CageUpdateFiles.verifyApp(backup, version: self.originalVersion, team: self.plan.team, gatekeeper: false)
+                    try CageUpdateFiles.verifyApp(backup, version: self.originalVersion, team: self.plan.team, gatekeeper: false, product: self.product)
                     // A failed target may contain invalid executables. Use only
                     // the verified original controller to release the backend.
-                    let control = backup.appendingPathComponent("Contents/Resources/cage")
+                    let control = backup.appendingPathComponent("Contents/Resources/" + self.product.backend)
                     let handoffData = try CageUpdateFiles.run(control.path, ["prepare-update", "--json"], timeout: 90)
                     guard let handoff = try JSONSerialization.jsonObject(with: handoffData) as? [String: Any], handoff["status"] as? String == "prepared" else {
                         throw CageUpdateError("新版本后台尚未安全退出，原应用备份已保留")
                     }
                     if !originalIntact { try CageUpdateFiles.restore(backup: backup, target: target, manager: self.manager) }
-                    try CageUpdateFiles.verifyApp(target, version: self.originalVersion, team: self.plan.team, gatekeeper: false)
+                    try CageUpdateFiles.verifyApp(target, version: self.originalVersion, team: self.plan.team, gatekeeper: false, product: self.product)
                     message += "。已恢复原应用，可稍后重试"
                 } else { message += "。原应用已保留" }
                 canOpen = true
@@ -159,6 +173,7 @@ final class CageUpdateInstaller: NSObject, NSApplicationDelegate {
                     self.exitHelper(); return
                 }
                 let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = true; configuration.createsNewApplicationInstance = true; configuration.environment = self.inheritedProfile()
+                configuration.arguments = self.relaunchArguments()
                 NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: self.plan.target), configuration: configuration) { app, _ in
                     if app == nil {
                         let alert = NSAlert(); alert.messageText = "VMac 更新未完成"; alert.informativeText = message; alert.runModal()

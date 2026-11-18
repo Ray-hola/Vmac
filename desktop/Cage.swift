@@ -239,7 +239,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         let appMenu = NSMenu(title: "VMac")
         appItem.submenu = appMenu
         appMenu.addItem(withTitle: "关于 VMac", action: #selector(about), keyEquivalent: "")
-        if !nativeVMTest {
+        if !nativeVMTest || Bundle.main.bundleIdentifier == CageProfile.vmacBundleID {
             appMenu.addItem(withTitle: "检查应用更新…", action: #selector(checkApplicationUpdate), keyEquivalent: "")
         }
         completeUpdateMenu = appMenu.addItem(withTitle: "完成待安装更新…", action: #selector(completePendingUpdate), keyEquivalent: "")
@@ -752,17 +752,18 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             appUpdater?.markLaunchReady()
             replyHandler(true,nil)
         case "appReference":
-            guard !nativeVMWorkbench else { replyHandler(nil, "VMac 使用独立的构建版本"); return }
+            let repository = Bundle.main.bundleIdentifier == CageProfile.vmacBundleID ? "Ray-hola/Vmac" : "Lee-xeo/Claude-Cage"
+            guard !nativeVMWorkbench || Bundle.main.bundleIdentifier == CageProfile.vmacBundleID else { replyHandler(nil, "此测试版使用独立安装包"); return }
             let path: String
             switch body["kind"] as? String {
             case "source": path = "commits/main"
             case "releases": path = "releases"
             default: replyHandler(nil,"未知的项目页面"); return
             }
-            let opened = NSWorkspace.shared.open(URL(string: "https://github.com/Lee-xeo/Claude-Cage/" + path)!)
+            let opened = NSWorkspace.shared.open(URL(string: "https://github.com/\(repository)/" + path)!)
             replyHandler(opened ? true : nil, opened ? nil : "无法打开项目页面，请检查默认浏览器")
         case "appUpdate":
-            if nativeVMTest { replyHandler(nil, "原生 VM 测试版使用独立构建。"); return }
+            if nativeVMTest && Bundle.main.bundleIdentifier != CageProfile.vmacBundleID { replyHandler(nil, "原生 VM 测试版使用独立构建。"); return }
             guard let operation = body["operation"] as? String, ["status", "check", "install", "cancel"].contains(operation) else { replyHandler(nil,"更新操作无效"); return }
             replyHandler(appUpdater.handle(operation),nil)
         case "appearance":
