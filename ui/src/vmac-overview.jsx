@@ -32,7 +32,7 @@ export function GuestOverview({ status, network, request, disk, onStart, onResta
   const job = status.job || {};
   const states = stepStates(status, network, phase);
   const checks = criticalChecks(status);
-  const busyTitle = job.kind === "restart" ? "正在重启客机" : job.kind === "stop" ? "正在停止客机" : "正在启动客机";
+  const busyTitle = { start: "正在启动客机", restart: "正在重启客机", stop: "正在停止客机" }[job.kind] || "正在处理客机操作";
   const copy = {
     busy: [busyTitle, job.message || "正在提交操作…"],
     ready: ["macOS 客机已就绪", "应用、文件和登录状态都保存在客机里。打开桌面继续工作。"],

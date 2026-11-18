@@ -254,7 +254,7 @@ private final class SidebarMachineCard: NSView {
         refreshChrome()
     }
     func update(running: Bool, ready: Bool, busy: Bool, setup: Bool, activity: String) {
-        let text = setup ? "等待安装" : busy ? (activity == "restart" ? "正在重启…" : activity == "stop" ? "正在停止…" : "正在启动…")
+        let text = setup ? "等待安装" : busy ? (["start": "正在启动…", "restart": "正在重启…", "stop": "正在停止…"][activity] ?? "正在处理…")
             : ready ? "运行中 · 已就绪" : running ? "运行中 · 连接中" : "已停止"
         if state.stringValue != text { SidebarMotion.fade(state.layer, 0.16); state.stringValue = text }
         let color = setup ? CagePalette.muted.withAlphaComponent(0.5) : busy || (running && !ready) ? CagePalette.warn : ready ? CagePalette.success : CagePalette.muted.withAlphaComponent(0.5)
