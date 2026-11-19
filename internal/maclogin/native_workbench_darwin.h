@@ -315,31 +315,33 @@ static BOOL plainASCII(NSString *text) {
     }];
 }
 - (void)uploadHandles:(NSArray<NSFileHandle *> *)handles names:(NSArray<NSString *> *)names
-                batch:(NSString *)batch index:(NSUInteger)index {
+                batch:(NSString *)batch folder:(NSString *)folder label:(NSString *)label index:(NSUInteger)index {
     NSURLComponents *route = [[NSURLComponents alloc] init];
     route.path = @"/api/macos/native-upload";
     route.queryItems = @[[NSURLQueryItem queryItemWithName:@"name" value:names[index]],
-                         [NSURLQueryItem queryItemWithName:@"batch" value:batch]];
+                         folder ? [NSURLQueryItem queryItemWithName:@"target" value:folder]
+                                : [NSURLQueryItem queryItemWithName:@"batch" value:batch]];
     [self runAgent:@[@"agent", @"request", @"POST", route.string, @"--content-type", @"application/octet-stream", @"--input", @"-"]
               input:nil file:handles[index] done:^(NSDictionary *value, NSString *failure) {
         if (failure) {
             if (index) [self showNotice:[NSString stringWithFormat:@"已传输 %lu 个文件，后续停止：%@", (unsigned long)index, failure]];
         } else if (index + 1 < handles.count) {
-            [self uploadHandles:handles names:names batch:batch index:index + 1];
+            [self uploadHandles:handles names:names batch:batch folder:folder label:label index:index + 1];
+        } else if (folder) {
+            [self showNotice:[NSString stringWithFormat:@"已把 %lu 个文件放到客机「%@」", (unsigned long)handles.count, label]];
         } else {
             [self showNotice:[NSString stringWithFormat:@"已传 %lu 个文件到客机「下载 / VMac Uploads / %@」", (unsigned long)handles.count, batch]];
-            // Show the dropped files in the guest so they can be moved on from there.
+            // Show the uploaded files in the guest so they can be moved on from there.
             NSData *body = [NSJSONSerialization dataWithJSONObject:@{@"batch":batch} options:0 error:NULL];
             [self runAgent:@[@"agent", @"request", @"POST", @"/api/macos/native-reveal", @"--input", @"-"] input:body
                     done:^(NSDictionary *result, NSString *problem) {}];
         }
     }];
 }
-- (BOOL)uploadURLs:(NSArray<NSURL *> *)urls {
+// Opens every file first, so a bad selection is refused before anything is sent.
+- (BOOL)openUploads:(NSArray<NSURL *> *)urls handles:(NSMutableArray<NSFileHandle *> *)handles names:(NSMutableArray<NSString *> *)names {
     if (self.busy || urls.count == 0) return NO;
     if (urls.count > 50) { [self showNotice:@"一次最多拖入 50 个文件；更多文件请在 Mac 上复制（⌘C）后到客机粘贴（⌘V）"]; return NO; }
-    NSMutableArray<NSFileHandle *> *handles = [NSMutableArray arrayWithCapacity:urls.count];
-    NSMutableArray<NSString *> *names = [NSMutableArray arrayWithCapacity:urls.count];
     for (NSURL *url in urls) {
         if (!url.isFileURL || (url.host.length && ![url.host isEqualToString:@"localhost"])) return NO;
         int fd = open(url.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
@@ -354,11 +356,45 @@ static BOOL plainASCII(NSString *text) {
         [handles addObject:[[NSFileHandle alloc] initWithFileDescriptor:fd closeOnDealloc:YES]];
         [names addObject:url.lastPathComponent];
     }
+    return YES;
+}
+- (BOOL)uploadURLs:(NSArray<NSURL *> *)urls {
+    NSMutableArray<NSFileHandle *> *handles = [NSMutableArray array];
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    if (![self openUploads:urls handles:handles names:names]) return NO;
     NSDateFormatter *format = [[NSDateFormatter alloc] init];
     format.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
     format.dateFormat = @"yyyyMMdd-HHmmss";
     NSString *batch = [NSString stringWithFormat:@"%@-%04x", [format stringFromDate:NSDate.date], arc4random_uniform(0x10000)];
-    [self uploadHandles:handles names:names batch:batch index:0];
+    [self uploadHandles:handles names:names batch:batch folder:nil label:nil index:0];
+    return YES;
+}
+// A drop lands where it was released: the guest names the Finder window or
+// the Desktop under that point, then each file is written straight there.
+- (BOOL)dropURLs:(NSArray<NSURL *> *)urls at:(NSPoint)location {
+    NSMutableArray<NSFileHandle *> *handles = [NSMutableArray array];
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    if (![self openUploads:urls handles:handles names:names]) return NO;
+    NSRect bounds = self.view.bounds;
+    double x = NSWidth(bounds) > 0 ? MIN(1, MAX(0, (location.x - NSMinX(bounds)) / NSWidth(bounds))) : 0.5;
+    double y = NSHeight(bounds) > 0 ? MIN(1, MAX(0, 1 - (location.y - NSMinY(bounds)) / NSHeight(bounds))) : 0.5;
+    NSData *body = [NSJSONSerialization dataWithJSONObject:@{@"x":@(x), @"y":@(y)} options:0 error:NULL];
+    [self runAgent:@[@"agent", @"request", @"POST", @"/api/macos/native-drop", @"--input", @"-"] input:body
+            done:^(NSDictionary *value, NSString *failure) {
+        NSDictionary *target = [value[@"body"] isKindOfClass:NSDictionary.class] ? value[@"body"] : nil;
+        NSString *folder = [target[@"folder"] isKindOfClass:NSString.class] ? target[@"folder"] : nil;
+        NSString *label = [target[@"label"] isKindOfClass:NSString.class] ? target[@"label"] : folder.lastPathComponent;
+        if (!folder.length) {
+            // An older backend cannot resolve the drop point; keep the upload folder.
+            NSDateFormatter *format = [[NSDateFormatter alloc] init];
+            format.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+            format.dateFormat = @"yyyyMMdd-HHmmss";
+            NSString *batch = [NSString stringWithFormat:@"%@-%04x", [format stringFromDate:NSDate.date], arc4random_uniform(0x10000)];
+            [self uploadHandles:handles names:names batch:batch folder:nil label:nil index:0];
+            return;
+        }
+        [self uploadHandles:handles names:names batch:nil folder:folder label:label index:0];
+    }];
     return YES;
 }
 - (BOOL)acceptDrop:(id<NSDraggingInfo>)sender perform:(BOOL)perform {
@@ -368,7 +404,7 @@ static BOOL plainASCII(NSString *text) {
     NSDictionary *options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};
     if (!perform) return [board canReadObjectForClasses:@[NSURL.class] options:options];
     NSArray<NSURL *> *urls = [board readObjectsForClasses:@[NSURL.class] options:options];
-    return [self uploadURLs:urls];
+    return [self dropURLs:urls at:[self.view convertPoint:sender.draggingLocation fromView:nil]];
 }
 - (IBAction)clipboardToGuest:(id)sender {
     if (self.busy) return;

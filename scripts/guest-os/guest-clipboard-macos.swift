@@ -240,6 +240,62 @@ private final class Stream: @unchecked Sendable {
     }
 }
 
+// Where a file dropped from the Mac belongs: the Finder window under the drop
+// point, otherwise the Desktop. Coordinates are fractions of the main display
+// measured from its top-left corner, as the host sees the guest picture.
+private func dropTarget(_ request: [String: Any]) throws -> [String: Any] {
+    guard let x = request["x"] as? Double, let y = request["y"] as? Double,
+          (0...1).contains(x), (0...1).contains(y) else { throw ClipboardFailure("invalid_point") }
+    let desktop: [String: Any] = ["path": FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop").path, "kind": "desktop"]
+    let frame = onGUI { NSScreen.screens.first?.frame } ?? .zero
+    guard frame.width > 0, frame.height > 0 else { return desktop }
+    let point = CGPoint(x: frame.minX + x * frame.width, y: y * frame.height)
+    guard let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first?.processIdentifier,
+          let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return desktop }
+    // The list runs front to back; the first ordinary window under the point decides.
+    for window in windows where (window[kCGWindowLayer as String] as? Int) == 0 {
+        guard let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+              let rect = CGRect(dictionaryRepresentation: bounds), rect.contains(point) else { continue }
+        guard (window[kCGWindowOwnerPID as String] as? pid_t) == finder else { return desktop }
+        return finderFolder(at: point).map { ["path": $0, "kind": "finder"] } ?? desktop
+    }
+    return desktop
+}
+
+// Finder reports its windows front to back with bounds in the same top-left
+// coordinates. Asking needs the user's one-time consent to control Finder.
+private func finderFolder(at point: CGPoint) -> String? {
+    let source = """
+    tell application "Finder"
+        set out to ""
+        repeat with w in (every Finder window)
+            try
+                set b to bounds of w
+                set p to POSIX path of (target of w as alias)
+                set out to out & (item 1 of b) & "," & (item 2 of b) & "," & (item 3 of b) & "," & (item 4 of b) & tab & p & linefeed
+            end try
+        end repeat
+        return out
+    end tell
+    """
+    let output: String? = onGUI {
+        var error: NSDictionary?
+        return NSAppleScript(source: source)?.executeAndReturnError(&error).stringValue
+    }
+    for line in (output ?? "").split(separator: "\n") {
+        let parts = line.split(separator: "\t", maxSplits: 1)
+        let edges = parts.first?.split(separator: ",").compactMap { Double($0) } ?? []
+        guard parts.count == 2, edges.count == 4 else { continue }
+        let rect = CGRect(x: edges[0], y: edges[1], width: edges[2] - edges[0], height: edges[3] - edges[1])
+        let path = String(parts[1])
+        var directory: ObjCBool = false
+        if rect.contains(point), path.hasPrefix("/"), FileManager.default.fileExists(atPath: path, isDirectory: &directory), directory.boolValue {
+            return path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+        }
+    }
+    return nil
+}
+
 private final class SnapshotDelivery: @unchecked Sendable {
     var remaining: Int
     var published = false
@@ -540,6 +596,15 @@ private final class ClipboardAgent: @unchecked Sendable {
             guard let first = try reader.line(), let operation = try json(first)["operation"] as? String else { return }
             let request = try json(first)
             switch operation {
+            case "drop-target":
+                try writeAll(fd, jsonData(dropTarget(request)))
+            case "reveal":
+                guard let path = request["path"] as? String, path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else { throw ClipboardFailure("invalid_files") }
+                onGUI {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                    NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first?.activate()
+                }
+                try writeAll(fd, jsonData(["ok": true]))
             case "copy-prepare":
                 let value = try onGUI { () -> [String: Any] in try check(); return ["revision": board.changeCount, "session": session] }
                 try writeAll(fd, jsonData(value))
@@ -717,7 +782,7 @@ private func client(_ operation: String) throws {
         }
         guard let line = try reader.line(), try json(line)["ok"] as? Bool == true else { throw ClipboardFailure("file_transfer_failed") }
     case "request":
-        guard let line = try Reader(STDIN_FILENO).line(), let action = try json(line)["operation"] as? String, ["read", "read-content", "write", "prepare-files", "discard", "copy-prepare", "copy-read"].contains(action) else { throw ClipboardFailure("unknown_operation") }
+        guard let line = try Reader(STDIN_FILENO).line(), let action = try json(line)["operation"] as? String, ["read", "read-content", "write", "prepare-files", "discard", "copy-prepare", "copy-read", "drop-target", "reveal"].contains(action) else { throw ClipboardFailure("unknown_operation") }
         try writeAll(fd, line + Data([10])); shutdown(fd, SHUT_WR)
         guard let reply = try reader.line() else { throw ClipboardFailure("clipboard_service_unavailable") }
         try writeAll(STDOUT_FILENO, reply + Data([10]))
