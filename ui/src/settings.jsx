@@ -342,7 +342,7 @@ export function SettingsPanel({
                   <span>
                     <strong>跟随出口 IP 的时区</strong>
                     <small>
-                      在启动或应用设置时重新查询，不会静默重启正在运行的任务。
+                      启动、重启或应用设置时重新查询出口。客机运行时可从虚拟机管理确认重启并应用。
                     </small>
                   </span>
                   <input

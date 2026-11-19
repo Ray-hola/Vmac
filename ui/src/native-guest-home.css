@@ -187,6 +187,11 @@
 .vm-profile-text { flex: 1; min-width: 0; }
 .vm-profile-text strong { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vm-profile-text small { display: block; color: var(--muted); font-size: 12px; }
+.vm-guest-details { margin: 14px 0 0; }
+.vm-guest-details > div { display: grid; grid-template-columns: minmax(82px, 1fr) 4fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.vm-guest-details dt { color: var(--muted); }
+.vm-guest-details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.vm-guest-details code { user-select: text; white-space: pre-wrap; }
 
 /* ── Checks ─────────────────────────────────────────────── */
 .vm-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; max-width: 1040px; margin-bottom: 18px; }

@@ -36,6 +36,9 @@ enum MacGuestLoginCredential {
     }
     static func copyForLogin() throws {
         guard let text = String(data: try read(), encoding: .utf8) else { throw CageUpdateError("客机密码格式无效。") }
+        try copyToClipboard(text)
+    }
+    static func copyToClipboard(_ text: String) throws {
         let item = NSPasteboardItem()
         item.setString(text, forType: .string)
         item.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
