@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Ray-hola/Vmac/internal/cage"
+	"github.com/Ray-hola/Vmac/internal/version"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -47,6 +48,9 @@ func transferMountServer(t *testing.T, running bool, mounted string) *Server {
 func TestTransferMountMigrationRequiresRestartAtEveryEntry(t *testing.T) {
 	for _, entry := range []string{"attach", "start", "up"} {
 		t.Run(entry, func(t *testing.T) {
+			if entry == "start" && version.MacOSGuestOnly {
+				t.Skip("the macOS-only build rejects Linux startup before checking its mounts")
+			}
 			s := transferMountServer(t, true, "old")
 			s.ready = true
 			s.exe = filepath.Join(t.TempDir(), "must-not-start")

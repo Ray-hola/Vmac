@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/Ray-hola/Vmac/internal/cage"
 	"github.com/Ray-hola/Vmac/internal/guestos"
+	"github.com/google/uuid"
 )
 
 func TestMacOSConnectionIgnoresSSHConfigOverrides(t *testing.T) {
@@ -118,6 +118,7 @@ func TestMacOSReadyBrowserRoutesUseNativeGuest(t *testing.T) {
 }
 
 func TestMacOSProjectRejectsSiblingProfileAndCredentials(t *testing.T) {
+	requireProjectSharing(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

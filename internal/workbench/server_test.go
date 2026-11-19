@@ -14,7 +14,15 @@ import (
 	"github.com/Ray-hola/Vmac/internal/cage"
 	"github.com/Ray-hola/Vmac/internal/guestos"
 	"github.com/Ray-hola/Vmac/internal/managedproxy"
+	"github.com/Ray-hola/Vmac/internal/version"
 )
+
+func requireProjectSharing(t *testing.T) {
+	t.Helper()
+	if version.MacOSGuestOnly {
+		t.Skip("persistent host project shares are disabled in the macOS-only build")
+	}
+}
 
 func testServer(t *testing.T) *Server {
 	t.Helper()

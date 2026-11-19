@@ -1,3 +1,5 @@
+//go:build !cage_macos_only
+
 package workbench
 
 import (

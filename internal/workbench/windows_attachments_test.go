@@ -42,11 +42,11 @@ func TestWindowsAttachmentFramesRequireCompleteSource(t *testing.T) {
 }
 
 func TestWindowsAttachmentPathConfinedToGeneratedDirectory(t *testing.T) {
-	valid := `C:\Users\CageLabSetup\VMac\Attachments\0123456789abcdef0123456789abcdef\中文 O'Brien.txt`
+	valid := `C:\Users\CageLabSetup\Cage\Attachments\0123456789abcdef0123456789abcdef\中文 O'Brien.txt`
 	if !validWindowsAttachmentPath(valid, "中文 O'Brien.txt") {
 		t.Fatal("valid guest path rejected")
 	}
-	for _, path := range []string{`C:\Users\VMac\secret.txt`, `C:\Users\VMac\VMac\Attachments\..\secret.txt`, `\\server\VMac\Attachments\0123456789abcdef0123456789abcdef\中文 O'Brien.txt`, valid + ":stream", valid + "\n"} {
+	for _, path := range []string{`C:\Users\VMac\secret.txt`, `C:\Users\CageLabSetup\Cage\Attachments\..\secret.txt`, `\\server\Cage\Attachments\0123456789abcdef0123456789abcdef\中文 O'Brien.txt`, valid + ":stream", valid + "\n"} {
 		if validWindowsAttachmentPath(path, "中文 O'Brien.txt") {
 			t.Fatalf("unsafe response accepted: %q", path)
 		}

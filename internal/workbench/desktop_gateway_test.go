@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Ray-hola/Vmac/internal/remotehost"
+	"github.com/Ray-hola/Vmac/internal/version"
 )
 
 type gatewayLocalFixture struct {
@@ -123,22 +124,30 @@ func TestDesktopCandidateFailurePreservesLiveViewAndStaleLocalIDs(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	stale := []string{"", none, "local", local}
 	remote, err := d.prepare(switchRequest{ConnectionID: local, Mode: "remote", HostID: host.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidateState(t, d, "failed")
-	if got := gatewayRequest(s, "/api/status", remote.ID); got.Code != 409 {
-		t.Fatal("uncommitted target dispatched a business API", got.Code)
-	}
-	if err = d.commit(context.Background(), switchRequest{ConnectionID: local, CandidateID: remote.ID, LocalAction: "stop"}); err == nil {
-		t.Fatal("failed candidate could stop or replace the current view")
+	if version.MacOSGuestOnly {
+		if remote != nil || err == nil {
+			t.Fatal("macOS-only build prepared a remote candidate")
+		}
+	} else {
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidateState(t, d, "failed")
+		if got := gatewayRequest(s, "/api/status", remote.ID); got.Code != 409 {
+			t.Fatal("uncommitted target dispatched a business API", got.Code)
+		}
+		if err = d.commit(context.Background(), switchRequest{ConnectionID: local, CandidateID: remote.ID, LocalAction: "stop"}); err == nil {
+			t.Fatal("failed candidate could stop or replace the current view")
+		}
+		if err = d.cancelCandidate(switchRequest{ConnectionID: local, CandidateID: remote.ID}); err != nil {
+			t.Fatal(err)
+		}
+		stale = append(stale, remote.ID)
 	}
 	if got := gatewayRequest(s, "/api/status", local); got.Code != 200 || f.commands.Load() != 2 || f.suspended.Load() != 0 {
 		t.Fatal("candidate failure affected the live view")
-	}
-	if err = d.cancelCandidate(switchRequest{ConnectionID: local, CandidateID: remote.ID}); err != nil {
-		t.Fatal(err)
 	}
 	if err = d.disconnect(context.Background(), switchRequest{ConnectionID: local}); err != nil {
 		t.Fatal(err)
@@ -147,9 +156,9 @@ func TestDesktopCandidateFailurePreservesLiveViewAndStaleLocalIDs(t *testing.T) 
 	if second == local || f.suspended.Load() != 1 {
 		t.Fatal("local reconnection reused a generation or failed to suspend the old view")
 	}
-	for _, stale := range []string{"", none, "local", local, remote.ID} {
-		if got := gatewayRequest(s, "/api/status", stale); got.Code != 409 {
-			t.Fatalf("obsolete ID %q reached local runtime, code %d", stale, got.Code)
+	for _, id := range stale {
+		if got := gatewayRequest(s, "/api/status", id); got.Code != 409 {
+			t.Fatalf("obsolete ID %q reached local runtime, code %d", id, got.Code)
 		}
 	}
 	if got := gatewayRequest(s, "/api/status", second); got.Code != 200 {

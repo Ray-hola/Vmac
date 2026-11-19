@@ -3,6 +3,7 @@
 package workbench
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,7 +35,18 @@ func TestMacOSOnlyRejectsRemoteWorkloads(t *testing.T) {
 }
 
 func TestMacOSOnlyRejectsPersistentHostProject(t *testing.T) {
-	if err := (&Server{}).ensureProjectShare(t.TempDir()); err == nil {
-		t.Fatal("macOS-only build accepted a host project share")
+	s := testServer(t)
+	s.ready = true
+	body, err := json.Marshal(map[string]any{"workspace": t.TempDir(), "add": true, "activate": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := request(s, http.MethodPost, "/api/projects/open", s.origin, string(body), true)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "主动上传") {
+		t.Fatalf("project grant did not enforce upload-only isolation: %d %s", w.Code, w.Body.String())
+	}
+	projects, err := s.projectPaths()
+	if err != nil || len(projects) != 0 || len(s.projectShares) != 0 || s.workspace() != "" {
+		t.Fatalf("a rejected project grant changed workspace state: %v, %v", projects, err)
 	}
 }

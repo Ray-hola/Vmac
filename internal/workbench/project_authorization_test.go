@@ -57,6 +57,7 @@ func TestProjectAuthorizationProtectsCredentialsAcrossGuests(t *testing.T) {
 }
 
 func TestProjectRestoreRevalidatesExistingCredentialGrant(t *testing.T) {
+	requireProjectSharing(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
