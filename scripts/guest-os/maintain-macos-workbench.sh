@@ -17,7 +17,8 @@ cd /
 user=$2
 mode=$3
 uid=$(id -u "$user")
-[[ $uid -ge 500 && " $(id -Gn "$user") " != *' admin '* ]] || exit 1
+# The ordinary account may also be a guest administrator after first setup.
+[[ $uid -ge 500 ]] || exit 1
 [[ $(stat -f %u "$kit") == 0 && -z $(find "$kit" \( -type l -o ! -user root -o -perm -0020 -o -perm -0002 \) -print -quit) ]] || exit 1
 manifest="$kit/native-components.json"
 /usr/bin/perl "$kit/native-component-manifest.pl" source "$manifest" "$kit"

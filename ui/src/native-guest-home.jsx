@@ -315,7 +315,7 @@ export function NativeGuestHome({ setup = null }) {
         </section>}
         {installed && <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} onStart={() => lifecycleAction.current?.("start")} running={status.vm_running} />}
       </> : page === "profiles" ? <VMProfiles status={status} onConfirm={confirm} />
-      : page === "login" ? <GuestLoginDetails installed={installed} username={account?.macos_guest_user} passwordPending={account?.macos_password_pending} />
+      : page === "login" ? <GuestLoginDetails installed={installed} ready={status.ready && !status.job?.running} username={account?.macos_guest_user} passwordPending={account?.macos_password_pending} onConfirm={confirm} />
       : page === "timezone" ? <GuestTimezone status={status} installed={installed} settingsOpen={Boolean(section)}
           onSettings={() => openSettings("region")} onRestart={() => lifecycleAction.current?.("restart")} />
       : page === "input" ? <GuestInputSources ready={status.ready} onOpen={() => openDesktop("desktop", false)} />

@@ -192,10 +192,12 @@ nc() { test "$1/$2/$3" = "-z/127.0.0.1/5900" && test -f "$QA_ROOT/loaded"; }
         env['VERIFIED_INTEL'] = 'yes'
         for user in ('root', 'cagesetup', 'cageprovision'):
             self.assertNotEqual(enable(user).returncode, 0, user)
-        env['GROUPS_FIXTURE'] = 'staff admin'
-        self.assertNotEqual(enable('blue').returncode, 0)
         self.assertFalse((self.root / 'group').exists())
-        env['GROUPS_FIXTURE'] = 'staff'
+        # The ordinary account may also hold guest administrator rights.
+        for groups in ('staff admin', 'staff'):
+            env['GROUPS_FIXTURE'] = groups
+            result = enable('blue')
+            self.assertEqual(result.returncode, 0, result.stderr)
         for model in ('Macmini8,1', 'VirtualMac2,1'):
             env['MODEL'] = model
             result = enable('blue')
