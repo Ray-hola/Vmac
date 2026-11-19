@@ -53,19 +53,28 @@ private enum SidebarMotion {
 
 private final class GuestNavigationButton: NSButton {
     var selected = false { didSet { if selected != oldValue { updateStyle() } } }
+    var expanded: Bool? {
+        didSet {
+            if let expanded { setAccessibilityExpanded(expanded) }
+            needsLayout = true
+        }
+    }
     private var hover = false
     private var tracking: NSTrackingArea?
     private let iconView = NSImageView()
     private let labelView = NSTextField(labelWithString: "")
+    private let disclosure = NSImageView()
     private let fade = CAGradientLayer()
     private var symbol = ""
+    private var indented = false
     override var isFlipped: Bool { true }
 
-    func configure(label: String, symbol: String) {
+    func configure(label: String, symbol: String, indented: Bool = false) {
         title = ""; image = nil; self.symbol = symbol
+        self.indented = indented
         toolTip = label
         labelView.stringValue = label
-        labelView.font = .systemFont(ofSize: 13.5, weight: .medium)
+        labelView.font = .systemFont(ofSize: indented ? 13 : 13.5, weight: .medium)
         labelView.lineBreakMode = .byTruncatingTail
         labelView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         labelView.wantsLayer = true
@@ -74,22 +83,34 @@ private final class GuestNavigationButton: NSButton {
         iconView.imageScaling = .scaleProportionallyDown
         iconView.setAccessibilityElement(false)
         addSubview(iconView); addSubview(labelView)
+        disclosure.isHidden = true
+        disclosure.setAccessibilityElement(false)
+        addSubview(disclosure)
         updateStyle()
     }
     override func layout() {
         super.layout()
         let sidebarWidth = bounds.width + 20
         let compact = bounded((142 - sidebarWidth) / 58)
-        let size: CGFloat = 16 + compact * 3
-        let x = 12 + (bounds.midX - size / 2 - 12) * compact
+        let size: CGFloat = (indented ? 15 : 16) + compact * 3
+        let leading: CGFloat = indented ? 26 : 12
+        let x = leading + (bounds.midX - size / 2 - leading) * compact
         iconView.frame = NSRect(x: x, y: (bounds.height-size)/2, width: size, height: size)
         iconView.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size - 1, weight: .regular))
         let opacity = bounded((sidebarWidth - 86) / 62)
         labelView.alphaValue = opacity
         labelView.isHidden = opacity == 0
+        let showsDisclosure = expanded != nil && sidebarWidth >= 145
+        disclosure.isHidden = !showsDisclosure
+        if let expanded, showsDisclosure {
+            disclosure.frame = NSRect(x: bounds.width-23, y: (bounds.height-12)/2, width: 12, height: 12)
+            disclosure.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+            disclosure.contentTintColor = CagePalette.muted
+        }
         let labelX: CGFloat = max(38, iconView.frame.maxX+10)
-        labelView.frame = NSRect(x: labelX, y: (bounds.height-20)/2, width: max(0,bounds.width-labelX-9), height: 20)
+        labelView.frame = NSRect(x: labelX, y: (bounds.height-20)/2, width: max(0,bounds.width-labelX-(showsDisclosure ? 29 : 9)), height: 20)
         CATransaction.begin(); CATransaction.setDisableActions(true)
         fade.frame = labelView.bounds
         let overflow = labelView.intrinsicContentSize.width > labelView.bounds.width
@@ -509,7 +530,9 @@ private func activeProfileName() -> String {
 final class CageGuestSidebar: NSView {
     var onSelect:((String)->Void)?
     private var rows:[String:GuestNavigationButton]=[:]
-    private let destinations = [("desktop","客机桌面","macwindow"),("space","虚拟机管理","internaldrive"),("proxy","代理管理","network"),("checks","环境检测","checkmark.shield")]
+    private let destinations = [("desktop","客机桌面","macwindow"),("management","虚拟机管理","internaldrive"),("proxy","代理管理","network"),("checks","环境检测","checkmark.shield")]
+    private let management = [("space","存储空间","externaldrive"),("profiles","虚拟机切换","square.on.square"),("login","客机账户","person.crop.circle"),("timezone","时区","clock")]
+    private var managementExpanded = true
     private let brand=NSTextField(labelWithString:"VMac_")
     private let logo=NSImageView()
     private let machine = SidebarMachineCard(profile: activeProfileName())
@@ -537,11 +560,16 @@ final class CageGuestSidebar: NSView {
         pill.layer?.borderWidth = 1
         pill.layer?.borderColor = CagePalette.accent.withAlphaComponent(0.2).cgColor
         addSubview(pill)
-        for (id,label,symbol) in destinations {
+        for (id,label,symbol) in Array(destinations.prefix(2)) + management + Array(destinations.dropFirst(2)) {
             let button=GuestNavigationButton(title:label,target:self,action:#selector(selectRow(_:)))
-            button.identifier=NSUserInterfaceItemIdentifier(id);button.configure(label:label,symbol:symbol)
+            button.identifier=NSUserInterfaceItemIdentifier(id)
+            button.configure(label: label, symbol: symbol, indented: isManagementPage(id))
             button.isBordered=false;button.bezelStyle = .inline;button.focusRingType = .default
             button.wantsLayer=true;button.layer?.cornerRadius=8;button.setAccessibilityLabel(label)
+            if id == "management" {
+                button.setAccessibilityRole(.disclosureTriangle)
+                button.expanded = managementExpanded
+            }
             addSubview(button);rows[id]=button
         }
         settingsRow.title = "设置"; settingsRow.target = self; settingsRow.action = #selector(selectRow(_:))
@@ -554,8 +582,36 @@ final class CageGuestSidebar: NSView {
         select("desktop")
     }
     required init?(coder:NSCoder) { fatalError() }
-    private func rowFrame(_ index: Int) -> NSRect {
-        NSRect(x: 10, y: machine.frame.maxY + 14 + CGFloat(index) * 38, width: max(0, bounds.width-20), height: 36)
+    private func isManagementPage(_ id: String) -> Bool {
+        management.contains { $0.0 == id }
+    }
+    private var highlighted: String {
+        !managementExpanded && isManagementPage(selected) ? "management" : selected
+    }
+    private func layoutNavigation() {
+        let compact = bounds.width < 146
+        var y = machine.frame.maxY + 14
+        func place(_ id: String, height: CGFloat) {
+            rows[id]?.frame = NSRect(x: 10, y: y, width: max(0, bounds.width-20), height: height)
+            rows[id]?.needsLayout = true
+            y += height + 2
+        }
+        for (id, _, _) in destinations {
+            place(id, height: compact ? 33 : 36)
+            if id == "management" {
+                for (child, _, _) in management {
+                    rows[child]?.isHidden = !managementExpanded
+                    if managementExpanded { place(child, height: compact ? 27 : 29) }
+                }
+            }
+        }
+        if !pillAnimating { pill.frame = pillTarget() }
+    }
+    private func showManagement(_ expanded: Bool) {
+        managementExpanded = expanded
+        rows["management"]?.expanded = expanded
+        layoutNavigation()
+        for (key, button) in rows { button.selected = key == highlighted }
     }
     override func layout() {
         super.layout()
@@ -564,11 +620,7 @@ final class CageGuestSidebar: NSView {
         logo.frame=compact ? NSRect(x:(bounds.width-32)/2,y:20,width:32,height:32) : NSRect(x:14,y:22,width:28,height:28)
         brand.frame=NSRect(x:50,y:21,width:max(0,bounds.width-60),height:28)
         machine.frame = NSRect(x: 10, y: 64, width: max(0, bounds.width-20), height: compact ? 46 : 56)
-        for (i,(id,_,_)) in destinations.enumerated() {
-            rows[id]?.frame=rowFrame(i)
-            rows[id]?.needsLayout=true
-        }
-        if !pillAnimating { pill.frame = pillTarget() }
+        layoutNavigation()
         settingsRow.frame = NSRect(x: 10, y: bounds.height-44, width: max(0, bounds.width-20), height: 34)
         settingsRow.needsLayout = true
         let height = SidebarTelemetry.preferredHeight(width: bounds.width)
@@ -576,12 +628,14 @@ final class CageGuestSidebar: NSView {
         telemetry.needsLayout=true
     }
     private func pillTarget() -> NSRect {
-        let index = destinations.firstIndex { $0.0 == selected } ?? 0
-        return rowFrame(index)
+        rows[highlighted]?.frame ?? .zero
     }
     @objc private func selectRow(_ sender:NSButton) { guard let id=sender.identifier?.rawValue else{return}; choose(id) }
     @objc private func powerPressed() { onSelect?(machine.power.mode == .restart ? "restart" : "start") }
-    private func choose(_ id: String) { if rows[id] != nil { select(id) }; onSelect?(id) }
+    private func choose(_ id: String) {
+        if id == "management" { showManagement(!managementExpanded) }
+        else { onSelect?(id) }
+    }
     func showNotice(_ text:String) {
         noticePopover?.close();noticeGeneration += 1
         guard !text.isEmpty,window?.isVisible == true else { return }
@@ -597,11 +651,13 @@ final class CageGuestSidebar: NSView {
     }
     func select(_ requested:String) {
         let id = requested == "lifecycle" ? "desktop" : requested
-        guard rows[id] != nil else { return }
+        guard rows[id] != nil, id != "management" else { return }
         let changed = id != selected
         selected = id
-        for (key,button) in rows { button.selected = key == id }
-        guard changed, window != nil, !pill.frame.isEmpty else { pill.frame = pillTarget(); return }
+        if changed && !managementExpanded && isManagementPage(id) { showManagement(true) }
+        for (key,button) in rows { button.selected = key == highlighted }
+        guard changed else { return }
+        guard window != nil, !pill.frame.isEmpty else { pill.frame = pillTarget(); return }
         pillAnimating = true
         SidebarMotion.animate(0.28, { pill.animator().frame = pillTarget() }, completion: { [weak self] in
             guard let self else { return }
