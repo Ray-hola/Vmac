@@ -34,6 +34,26 @@ app_applied=0
 cli_previous=''
 if [[ -L /usr/local/libexec/cage-cli ]]; then cli_previous=$(readlink /usr/local/libexec/cage-cli); fi
 
+# launchctl bootout returns before the agent has exited. A bootstrap issued in
+# that window fails with "Bootstrap failed: 5: Input/output error", which rolled
+# back whole component updates when a slower agent (the node browser) was loaded.
+wait_unloaded() {
+    local tries=0
+    while sudo -Hu "$user" /bin/launchctl print "gui/$uid/$1" >/dev/null 2>&1 && (( tries < 50 )); do
+        tries=$((tries+1))
+        sleep 0.2
+    done
+}
+bootstrap_agent() {
+    local tries=0
+    until sudo -Hu "$user" /bin/launchctl bootstrap "gui/$uid" "/Users/$user/Library/LaunchAgents/$1.plist"; do
+        tries=$((tries+1))
+        (( tries < 4 )) || return 1
+        wait_unloaded "$1"
+        sleep 0.5
+    done
+}
+
 finish() {
     local status=$? index target label
     trap - EXIT
@@ -41,6 +61,7 @@ finish() {
         for ((index=0; index<${#loaded[@]}; index++)); do
             label=${loaded[$index]}
             sudo -Hu "$user" /bin/launchctl bootout "gui/$uid/$label" >/dev/null 2>&1 || true
+            wait_unloaded "$label"
         done
         for ((index=${#changed[@]}-1; index>=0; index--)); do
             target=${changed[$index]}
@@ -61,7 +82,7 @@ finish() {
         fi
         for ((index=0; index<${#previous_loaded[@]}; index++)); do
             label=${previous_loaded[$index]}
-            if ! sudo -Hu "$user" /bin/launchctl bootstrap "gui/$uid" "/Users/$user/Library/LaunchAgents/$label.plist" >/dev/null 2>&1; then status=1; fi
+            if ! bootstrap_agent "$label" >/dev/null 2>&1; then status=1; fi
         done
     fi
     if (( status == 0 )); then
@@ -117,6 +138,7 @@ for label in dev.cage.GuestClaudeWindow dev.cage.GuestClipboard dev.cage.GuestBr
         loaded+=("$label")
         previous_loaded+=("$label")
         sudo -Hu "$user" /bin/launchctl bootout "gui/$uid/$label"
+        wait_unloaded "$label"
     fi
 done
 # Project shares and workbench terminals have already been closed by the host.
@@ -197,7 +219,7 @@ if [[ $(stat -f %u /dev/console) == "$uid" ]]; then
 fi
 for ((index=0; index<${#loaded[@]}; index++)); do
     label=${loaded[$index]}
-    sudo -Hu "$user" /bin/launchctl bootstrap "gui/$uid" "/Users/$user/Library/LaunchAgents/$label.plist"
+    bootstrap_agent "$label"
 done
 /usr/bin/perl "$kit/native-component-manifest.pl" publish "$manifest" "$kit"
 # The new helpers accept both installation paths. Commit them before migrating
