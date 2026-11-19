@@ -22,10 +22,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Ray-hola/Vmac/internal/guestos"
 	"github.com/google/uuid"
 	"github.com/kballard/go-shellquote"
 	"github.com/pkg/sftp"
-	"github.com/Ray-hola/Vmac/internal/guestos"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -391,6 +391,7 @@ func TestMacOSMediaRegistryParserHandlesSubclassesAndLabels(t *testing.T) {
 }
 
 func TestMacOSDefaultWorkspaceUsesApprovedSharedProject(t *testing.T) {
+	requireProjectSharing(t)
 	guest := newMacWorkspaceGuest(t)
 	s := guest.s
 	marker := filepath.Join(guest.hostPath, "keep.txt")
@@ -449,6 +450,7 @@ func TestMacOSDefaultWorkspaceUsesApprovedSharedProject(t *testing.T) {
 }
 
 func TestMacOSDefaultWorkspaceRestoresWithVisibleFailureAndRetry(t *testing.T) {
+	requireProjectSharing(t)
 	guest := newMacWorkspaceGuest(t)
 	s := guest.s
 	s.restoreProjectShares()
@@ -521,6 +523,7 @@ func TestMacOSDefaultWorkspaceNewAndLegacyConversations(t *testing.T) {
 }
 
 func TestMacOSProjectOpenRestoresPendingApprovalWindow(t *testing.T) {
+	requireProjectSharing(t)
 	var activations atomic.Int32
 	var activationFails atomic.Bool
 	guest := newMacWorkspaceGuest(t, func(channel ssh.Channel, command string) (uint32, bool) {

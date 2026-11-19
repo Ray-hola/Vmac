@@ -19,6 +19,7 @@ import (
 )
 
 func TestProjectSelectionKeepsOneVMAndExistingSessionsOffline(t *testing.T) {
+	requireProjectSharing(t)
 	s := testServer(t)
 	cfg, _ := loadConfig(s.configPath)
 	s.preferences.Workspace = s.environmentDir()
@@ -175,6 +176,7 @@ func TestProjectListComesFromSavedDirectories(t *testing.T) {
 }
 
 func TestRestoreProjectSharesReportsTheFailedDirectoryAndReason(t *testing.T) {
+	requireProjectSharing(t)
 	s := testServer(t)
 	connected, _ := filepath.EvalSymlinks(t.TempDir())
 	executable, err := os.Executable()
@@ -211,6 +213,7 @@ func TestRestoreProjectSharesReportsTheFailedDirectoryAndReason(t *testing.T) {
 }
 
 func TestProjectReconnectClearsOnlyItsOwnWarning(t *testing.T) {
+	requireProjectSharing(t)
 	s := testServer(t)
 	connected, _ := filepath.EvalSymlinks(t.TempDir())
 	parent, _ := filepath.EvalSymlinks(t.TempDir())
@@ -239,6 +242,7 @@ func TestProjectReconnectClearsOnlyItsOwnWarning(t *testing.T) {
 }
 
 func TestProjectActionsUseExplicitDirectoryWithoutSwitchingProject(t *testing.T) {
+	requireProjectSharing(t)
 	s := testServer(t)
 	a, _ := filepath.EvalSymlinks(t.TempDir())
 	b, _ := filepath.EvalSymlinks(t.TempDir())

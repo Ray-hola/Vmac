@@ -10,6 +10,7 @@ import (
 )
 
 func TestProjectPickerConsumerAddsOnceAndReusesAuthorizedDirectory(t *testing.T) {
+	requireProjectSharing(t)
 	s := testServer(t)
 	s.ready, s.networkPaused = true, true
 	a, _ := filepath.EvalSymlinks(t.TempDir())
@@ -71,6 +72,7 @@ func TestProjectPickerConsumerAddsOnceAndReusesAuthorizedDirectory(t *testing.T)
 }
 
 func TestProjectPickerWorkbenchActivationPreservesOtherPreferences(t *testing.T) {
+	requireProjectSharing(t)
 	s := testServer(t)
 	s.ready = true
 	root, _ := filepath.EvalSymlinks(t.TempDir())

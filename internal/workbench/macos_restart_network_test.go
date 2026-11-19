@@ -22,7 +22,17 @@ func TestMacOSLocaleKeepsSecondaryLanguages(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("uses native macOS defaults")
 	}
-	domain := filepath.Join(t.TempDir(), "regional-preferences")
+	// defaults writes through cfprefsd, which may not access a sandbox's TMPDIR.
+	dir, err := os.MkdirTemp("/private/tmp", "vmac-locale-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	domain := filepath.Join(dir, "regional-preferences")
 	run := func(name string, args ...string) string {
 		t.Helper()
 		out, err := exec.Command(name, args...).CombinedOutput()

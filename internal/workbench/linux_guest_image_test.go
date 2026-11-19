@@ -1,3 +1,5 @@
+//go:build !cage_macos_only
+
 package workbench
 
 import (
@@ -10,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/Ray-hola/Vmac/internal/guestos"
 	"github.com/Ray-hola/Vmac/internal/hostimage"
+	"github.com/google/uuid"
 )
 
 func TestUbuntuGuestChoicesMatchSupportedHostArchitectures(t *testing.T) {

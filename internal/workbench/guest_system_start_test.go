@@ -1,11 +1,13 @@
 package workbench
 
 import (
-	"github.com/google/uuid"
-	"github.com/Ray-hola/Vmac/internal/guestos"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Ray-hola/Vmac/internal/guestos"
+	"github.com/Ray-hola/Vmac/internal/version"
+	"github.com/google/uuid"
 )
 
 func TestUnsupportedGuestSystemCannotStartDebian(t *testing.T) {
@@ -29,7 +31,11 @@ func TestIncompleteInstallationPreventsImplicitLinuxStart(t *testing.T) {
 			t.Fatalf("created a Linux job from pending macOS (%s): %d", body, w.Code)
 		}
 	}
-	if err := s.startEnvironment(false); err == nil || !strings.Contains(err.Error(), "原生客户机") {
+	want := "原生客户机"
+	if version.MacOSGuestOnly {
+		want = "只支持 macOS 客机"
+	}
+	if err := s.startEnvironment(false); err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("indirect Linux start: %v", err)
 	}
 }
