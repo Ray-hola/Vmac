@@ -44,9 +44,9 @@ func (s *Server) macOSNativeUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.URL.Query().Get("name")
 	batch := r.URL.Query().Get("batch")
-	const limit = 1 << 30
+	const limit = 8 << 30
 	if !validNativeUploadName(name) || (batch != "" && !nativeUploadBatch.MatchString(batch)) || r.ContentLength > limit {
-		http.Error(w, "文件名无效或文件超过 1 GB", http.StatusBadRequest)
+		http.Error(w, "文件名无效或文件超过 8 GB", http.StatusBadRequest)
 		return
 	}
 	body := http.MaxBytesReader(w, r.Body, limit)
@@ -59,14 +59,15 @@ func (s *Server) macOSNativeUpload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 	size, err := io.Copy(file, body)
 	if err != nil {
-		http.Error(w, "上传中断或文件超过 1 GB", http.StatusBadRequest)
+		http.Error(w, "上传中断或文件超过 8 GB", http.StatusBadRequest)
 		return
 	}
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
 		http.Error(w, "无法读取上传文件", http.StatusInternalServerError)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 110*time.Second)
+	// Allow large files at a conservative 16 MB/s on top of a fixed margin.
+	ctx, cancel := context.WithTimeout(r.Context(), 110*time.Second+time.Duration(size/(16<<20))*time.Second)
 	defer cancel()
 	// Every transfer gets a private directory. Remove incomplete uploads and
 	// publish the original name only after the transfer terminates cleanly.

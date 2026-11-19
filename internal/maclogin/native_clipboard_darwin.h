@@ -31,8 +31,8 @@ static NSArray<NSURL *> *hostClipboardFiles(NSPasteboard *board) {
     return urls.count ? urls : nil;
 }
 
-// Files copied on the Mac reach the guest only when the selection is small
-// enough to stage quickly; larger moves go through the explicit upload.
+// Files copied on the Mac reach the guest when the selection stays within the
+// clipboard archive limits (8 GB per file and per selection, 100 items).
 static NSString *clipboardFilesProblem(NSArray<NSURL *> *urls) {
     if (urls.count > 100) return @"一次最多复制 100 项到客机";
     NSFileManager *fm = NSFileManager.defaultManager;
@@ -49,7 +49,8 @@ static NSString *clipboardFilesProblem(NSArray<NSURL *> *urls) {
             NSNumber *size = nil;
             [item getResourceValue:&size forKey:NSURLFileSizeKey error:NULL];
             total += size.longLongValue;
-            if (total > (1LL << 30)) return @"复制的文件超过 1 GB，未自动同步。可把文件拖到客机画面上传";
+            if (size.longLongValue > (8LL << 30)) return @"单个文件超过 8 GB，未同步到客机。请压缩或分卷后再复制";
+            if (total > (8LL << 30)) return @"复制的文件合计超过 8 GB，未同步到客机。请分批复制";
         }
     }
     return nil;

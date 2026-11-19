@@ -107,6 +107,10 @@ func AgentRequest(ctx context.Context, configPath string, target AgentTarget, me
 	}
 	defer c.close()
 	c.client.Timeout = 2 * time.Minute
+	if input != nil {
+		// Streamed uploads such as dropped files can take far longer.
+		c.client.Timeout = time.Hour
+	}
 	req, err := http.NewRequestWithContext(ctx, method, c.origin+path, input)
 	if err != nil {
 		return result, err

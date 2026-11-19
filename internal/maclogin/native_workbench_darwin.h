@@ -316,18 +316,18 @@ static BOOL plainASCII(NSString *text) {
 }
 - (BOOL)uploadURLs:(NSArray<NSURL *> *)urls {
     if (self.busy || urls.count == 0) return NO;
-    if (urls.count > 20) { [self showNotice:@"一次最多拖入 20 个文件；更多文件请在 Mac 上复制（⌘C）后到客机粘贴（⌘V）"]; return NO; }
+    if (urls.count > 50) { [self showNotice:@"一次最多拖入 50 个文件；更多文件请在 Mac 上复制（⌘C）后到客机粘贴（⌘V）"]; return NO; }
     NSMutableArray<NSFileHandle *> *handles = [NSMutableArray arrayWithCapacity:urls.count];
     NSMutableArray<NSString *> *names = [NSMutableArray arrayWithCapacity:urls.count];
     for (NSURL *url in urls) {
         if (!url.isFileURL || (url.host.length && ![url.host isEqualToString:@"localhost"])) return NO;
         int fd = open(url.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
         struct stat status;
-        if (fd < 0 || fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_size > (1LL << 30)) {
+        if (fd < 0 || fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_size > (8LL << 30)) {
             BOOL folder = fd >= 0 && S_ISDIR(status.st_mode);
             if (fd >= 0) close(fd);
             [self showNotice:folder ? @"文件夹请在 Mac 上复制（⌘C），再到客机里粘贴（⌘V）"
-                                    : @"拖入的文件需小于或等于 1 GB；更大的文件请压缩后再传"];
+                                    : @"拖入的文件需小于或等于 8 GB；更大的文件请压缩或分卷后再传"];
             return NO;
         }
         [handles addObject:[[NSFileHandle alloc] initWithFileDescriptor:fd closeOnDealloc:YES]];
