@@ -511,6 +511,7 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("POST /api/macos/space/scan", s.macOSSpace)
 		mux.HandleFunc("POST /api/macos/space/clean", s.macOSSpace)
 		mux.HandleFunc("POST /api/macos/native-upload", s.macOSNativeUpload)
+		mux.HandleFunc("POST /api/macos/native-reveal", s.macOSNativeReveal)
 		mux.HandleFunc("POST /api/macos/native-clipboard", s.macOSNativeClipboard)
 		mux.HandleFunc("GET /api/macos/guest-admin", s.macOSGuestAdmin)
 		mux.HandleFunc("POST /api/macos/guest-admin", s.macOSGuestAdmin)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -42,8 +43,9 @@ func (s *Server) macOSNativeUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.URL.Query().Get("name")
+	batch := r.URL.Query().Get("batch")
 	const limit = 1 << 30
-	if !validNativeUploadName(name) || r.ContentLength > limit {
+	if !validNativeUploadName(name) || (batch != "" && !nativeUploadBatch.MatchString(batch)) || r.ContentLength > limit {
 		http.Error(w, "文件名无效或文件超过 1 GB", http.StatusBadRequest)
 		return
 	}
@@ -68,18 +70,25 @@ func (s *Server) macOSNativeUpload(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	// Every transfer gets a private directory. Remove incomplete uploads and
 	// publish the original name only after the transfer terminates cleanly.
+	// One drop shares a batch folder so the guest can show it in one window.
 	script := `set -eu
 umask 077
 root="$HOME/Downloads/VMac Uploads"
 mkdir -p -- "$root"
-dir=$(/usr/bin/mktemp -d "$root/Upload.XXXXXXXX")
-trap '/bin/rm -rf -- "$dir"' EXIT
+if [ -n "$3" ]; then
+  dir="$root/$3"
+  mkdir -p -- "$dir"
+  if [ -e "$dir/$1" ]; then dir=$(/usr/bin/mktemp -d "$dir/Upload.XXXXXXXX"); fi
+else
+  dir=$(/usr/bin/mktemp -d "$root/Upload.XXXXXXXX")
+fi
 tmp=$(/usr/bin/mktemp "$dir/.partial.XXXXXXXX")
+trap '/bin/rm -f -- "$tmp"' EXIT
 /bin/cat > "$tmp"
 [ "$(/usr/bin/stat -f %z "$tmp")" = "$2" ]
 /bin/mv -- "$tmp" "$dir/$1"
 trap - EXIT`
-	command := "exec /bin/sh -c " + shellescape.Quote(script) + " upload " + shellescape.Quote(name) + " " + strconv.FormatInt(size, 10)
+	command := "exec /bin/sh -c " + shellescape.Quote(script) + " upload " + shellescape.Quote(name) + " " + strconv.FormatInt(size, 10) + " " + shellescape.Quote(batch)
 	cmd := s.macOSSSHCommand(ctx, "-T", "cage-macos", "--", command)
 	cmd.Stdin = file
 	if err := cmd.Run(); err != nil {
@@ -87,6 +96,34 @@ trap - EXIT`
 		return
 	}
 	jsonReply(w, map[string]string{"folder": "Downloads/VMac Uploads"})
+}
+
+var nativeUploadBatch = regexp.MustCompile(`^[0-9]{8}-[0-9]{6}(-[0-9a-f]{4})?$`)
+
+// macOSNativeReveal opens a finished drop batch in the guest's Finder.
+func (s *Server) macOSNativeReveal(w http.ResponseWriter, r *http.Request) {
+	if !s.nativeMacOSTransferReady(w, r) {
+		return
+	}
+	var input struct {
+		Batch string `json:"batch"`
+	}
+	if !readJSON(w, r, &input) {
+		return
+	}
+	if !nativeUploadBatch.MatchString(input.Batch) {
+		http.Error(w, "上传批次无效", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	command := "exec /usr/bin/open -- " + shellescape.Quote("Downloads/VMac Uploads/"+input.Batch)
+	cmd := s.macOSSSHCommand(ctx, "-T", "cage-macos", "--", "cd \"$HOME\" && "+command)
+	if err := cmd.Run(); err != nil {
+		http.Error(w, "无法在客机中打开上传的文件夹", http.StatusBadGateway)
+		return
+	}
+	jsonReply(w, map[string]bool{"opened": true})
 }
 
 type nativeClipboardValue struct {

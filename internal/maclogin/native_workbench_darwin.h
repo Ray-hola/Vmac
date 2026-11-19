@@ -135,23 +135,30 @@
         [self uploadURLs:panel.URLs];
     }];
 }
-- (void)uploadHandles:(NSArray<NSFileHandle *> *)handles names:(NSArray<NSString *> *)names index:(NSUInteger)index {
+- (void)uploadHandles:(NSArray<NSFileHandle *> *)handles names:(NSArray<NSString *> *)names
+                batch:(NSString *)batch index:(NSUInteger)index {
     NSURLComponents *route = [[NSURLComponents alloc] init];
     route.path = @"/api/macos/native-upload";
-    route.queryItems = @[[NSURLQueryItem queryItemWithName:@"name" value:names[index]]];
+    route.queryItems = @[[NSURLQueryItem queryItemWithName:@"name" value:names[index]],
+                         [NSURLQueryItem queryItemWithName:@"batch" value:batch]];
     [self runAgent:@[@"agent", @"request", @"POST", route.string, @"--content-type", @"application/octet-stream", @"--input", @"-"]
               input:nil file:handles[index] done:^(NSDictionary *value, NSString *failure) {
         if (failure) {
             if (index) [self showNotice:[NSString stringWithFormat:@"已传输 %lu 个文件，后续停止：%@", (unsigned long)index, failure]];
         } else if (index + 1 < handles.count) {
-            [self uploadHandles:handles names:names index:index + 1];
+            [self uploadHandles:handles names:names batch:batch index:index + 1];
         } else {
-            [self showNotice:[NSString stringWithFormat:@"已上传 %lu 个文件到客机 下载 / VMac Uploads", (unsigned long)handles.count]];
+            [self showNotice:[NSString stringWithFormat:@"已传 %lu 个文件到客机「下载 / VMac Uploads / %@」", (unsigned long)handles.count, batch]];
+            // Show the dropped files in the guest so they can be moved on from there.
+            NSData *body = [NSJSONSerialization dataWithJSONObject:@{@"batch":batch} options:0 error:NULL];
+            [self runAgent:@[@"agent", @"request", @"POST", @"/api/macos/native-reveal", @"--input", @"-"] input:body
+                    done:^(NSDictionary *result, NSString *problem) {}];
         }
     }];
 }
 - (BOOL)uploadURLs:(NSArray<NSURL *> *)urls {
-    if (self.busy || urls.count == 0 || urls.count > 20) return NO;
+    if (self.busy || urls.count == 0) return NO;
+    if (urls.count > 20) { [self showNotice:@"一次最多拖入 20 个文件；更多文件请在 Mac 上复制（⌘C）后到客机粘贴（⌘V）"]; return NO; }
     NSMutableArray<NSFileHandle *> *handles = [NSMutableArray arrayWithCapacity:urls.count];
     NSMutableArray<NSString *> *names = [NSMutableArray arrayWithCapacity:urls.count];
     for (NSURL *url in urls) {
@@ -159,14 +166,20 @@
         int fd = open(url.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
         struct stat status;
         if (fd < 0 || fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_size > (1LL << 30)) {
+            BOOL folder = fd >= 0 && S_ISDIR(status.st_mode);
             if (fd >= 0) close(fd);
-            [self showNotice:@"请选择小于或等于 1 GB 的普通文件"];
+            [self showNotice:folder ? @"文件夹请在 Mac 上复制（⌘C），再到客机里粘贴（⌘V）"
+                                    : @"拖入的文件需小于或等于 1 GB；更大的文件请压缩后再传"];
             return NO;
         }
         [handles addObject:[[NSFileHandle alloc] initWithFileDescriptor:fd closeOnDealloc:YES]];
         [names addObject:url.lastPathComponent];
     }
-    [self uploadHandles:handles names:names index:0];
+    NSDateFormatter *format = [[NSDateFormatter alloc] init];
+    format.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    format.dateFormat = @"yyyyMMdd-HHmmss";
+    NSString *batch = [NSString stringWithFormat:@"%@-%04x", [format stringFromDate:NSDate.date], arc4random_uniform(0x10000)];
+    [self uploadHandles:handles names:names batch:batch index:0];
     return YES;
 }
 - (BOOL)acceptDrop:(id<NSDraggingInfo>)sender perform:(BOOL)perform {

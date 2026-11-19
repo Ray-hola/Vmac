@@ -19,6 +19,72 @@ static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) 
     return nil;
 }
 
+static void clipboardNotice(NSString *message) {
+    if (!showEmbeddedControls || !message.length) return;
+    showEmbeddedControls([@"notice:" stringByAppendingString:message].UTF8String);
+}
+
+static NSArray<NSURL *> *hostClipboardFiles(NSPasteboard *board) {
+    if ([board.types containsObject:@"org.nspasteboard.ConcealedType"] ||
+        [board.types containsObject:@"org.nspasteboard.TransientType"]) return nil;
+    NSArray<NSURL *> *urls = [board readObjectsForClasses:@[NSURL.class] options:@{NSPasteboardURLReadingFileURLsOnlyKey:@YES}];
+    return urls.count ? urls : nil;
+}
+
+// Files copied on the Mac reach the guest only when the selection is small
+// enough to stage quickly; larger moves go through the explicit upload.
+static NSString *clipboardFilesProblem(NSArray<NSURL *> *urls) {
+    if (urls.count > 100) return @"一次最多复制 100 项到客机";
+    NSFileManager *fm = NSFileManager.defaultManager;
+    long long total = 0;
+    NSUInteger entries = 0;
+    for (NSURL *url in urls) {
+        if (!url.isFileURL || (url.host.length && ![url.host isEqualToString:@"localhost"])) return @"只能复制本机文件";
+        NSNumber *directory = nil;
+        [url getResourceValue:&directory forKey:NSURLIsDirectoryKey error:NULL];
+        id<NSFastEnumeration> items = directory.boolValue ?
+            [fm enumeratorAtURL:url includingPropertiesForKeys:@[NSURLFileSizeKey] options:0 errorHandler:nil] : @[url];
+        for (NSURL *item in items) {
+            if (++entries > 20000) return @"复制的文件数量过多，请压缩后再复制到客机";
+            NSNumber *size = nil;
+            [item getResourceValue:&size forKey:NSURLFileSizeKey error:NULL];
+            total += size.longLongValue;
+            if (total > (1LL << 30)) return @"复制的文件超过 1 GB，未自动同步。可把文件拖到客机画面上传";
+        }
+    }
+    return nil;
+}
+
+// Runs the bundled backend's clipboard file helper; arguments never carry
+// file contents, only host paths or transient selection identities.
+static NSDictionary *clipboardFilesCommand(NSArray<NSString *> *args, NSString **failure) {
+    NSTask *task = [[NSTask alloc] init];
+    task.executableURL = [NSBundle.mainBundle URLForResource:@"vmac" withExtension:nil];
+    if (!task.executableURL) { if (failure) *failure = @"缺少 VMac 后台组件"; return nil; }
+    task.arguments = [@[@"clipboard-files", @"--json"] arrayByAddingObjectsFromArray:args];
+    NSPipe *output = NSPipe.pipe;
+    task.standardOutput = output;
+    task.standardError = NSFileHandle.fileHandleWithNullDevice;
+    task.standardInput = NSFileHandle.fileHandleWithNullDevice;
+    if (![task launchAndReturnError:NULL]) { if (failure) *failure = @"无法启动剪贴板文件传递"; return nil; }
+    NSData *data = [output.fileHandleForReading readDataToEndOfFile];
+    [task waitUntilExit];
+    id value = data.length <= (1 << 20) ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
+    NSDictionary *result = [value isKindOfClass:NSDictionary.class] ? value : nil;
+    if (task.terminationStatus != 0 || !result) {
+        NSString *message = [result[@"message"] isKindOfClass:NSString.class] ? result[@"message"] : nil;
+        if (failure) *failure = message ?: @"剪贴板文件传递失败，请重新复制";
+        return nil;
+    }
+    return result;
+}
+
+static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
+    NSData *request = [NSJSONSerialization dataWithJSONObject:@{@"action":action, @"cache_id":cache ?: @""} options:0 error:NULL];
+    NSString *text = request ? [[NSString alloc] initWithData:request encoding:NSUTF8StringEncoding] : nil;
+    return text ? clipboardFilesCommand(@[@"cache", text], NULL) : nil;
+}
+
 @interface CageDesktopClipboard : NSObject
 - (void)setDesktopVisible:(BOOL)visible;
 @end
@@ -32,8 +98,12 @@ static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) 
     NSInteger _serial;
     NSInteger _pendingSerial;
     BOOL _connected;
+    BOOL _transferring;
     NSTimeInterval _retryAfter;
     NSTimeInterval _lastRequest;
+    NSTimeInterval _lastCollect;
+    NSMutableDictionary<NSString *, NSArray<NSString *> *> *_caches;
+    NSMutableDictionary<NSString *, NSNumber *> *_unreferenced;
 }
 - (void)closeConnection {
     [_task.standardOutput fileHandleForReading].readabilityHandler = nil;
@@ -93,7 +163,11 @@ static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) 
     }
     NSNumber *ack = message[@"ack"];
     if ([ack isKindOfClass:NSNumber.class] && ack.integerValue == _pendingSerial) _pendingSerial = 0;
-    if (!_connected || _pendingSerial || board.changeCount != _hostRevision || message[@"files"]) return;
+    if (!_connected || _pendingSerial || _transferring || board.changeCount != _hostRevision) return;
+    if (message[@"files"]) {
+        if ([message[@"files"] isKindOfClass:NSString.class]) [self receiveFiles:message[@"files"]];
+        return;
+    }
     NSString *value = message[@"text"], *encoded = message[@"png"];
     NSData *png = [encoded isKindOfClass:NSString.class] && encoded.length <= (12 << 20) ?
         [[NSData alloc] initWithBase64EncodedString:encoded options:0] : nil;
@@ -155,13 +229,24 @@ static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) 
         if (now >= _retryAfter) [self connect];
         return;
     }
+    if (_transferring) return;
     if (!_connected || _pendingSerial) {
         if (now - _lastRequest > 12) [self closeConnection];
         return;
     }
     NSPasteboard *board = NSPasteboard.generalPasteboard;
+    if (now - _lastCollect > 5) { _lastCollect = now; [self collectCaches]; }
     NSInteger revision = board.changeCount;
     if (revision == _hostRevision) return;
+    NSArray<NSURL *> *files = hostClipboardFiles(board);
+    if (files) {
+        // Stage Mac files only once VMac is in front, so unrelated Finder
+        // copies in other apps are not uploaded to the guest.
+        if (!NSApp.isActive) return;
+        _hostRevision = revision;
+        [self sendFiles:files revision:revision];
+        return;
+    }
     NSMutableDictionary *contents = [transferableClipboard(board, YES) mutableCopy];
     if (board.changeCount != revision) return;
     _hostRevision = revision;
@@ -170,6 +255,109 @@ static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) 
     _lastRequest = now;
     contents[@"serial"] = @(_pendingSerial);
     [self send:contents];
+}
+- (void)sendFiles:(NSArray<NSURL *> *)files revision:(NSInteger)revision {
+    _transferring = YES;
+    NSArray<NSString *> *paths = [files valueForKey:@"path"];
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSString *failure = clipboardFilesProblem(files);
+        NSDictionary *result = failure ? nil :
+            clipboardFilesCommand([@[@"--connection", @"local", @"send"] arrayByAddingObjectsFromArray:paths], &failure);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            CageDesktopClipboard *client = weakSelf;
+            NSString *selection = [result[@"files"] isKindOfClass:NSString.class] ? result[@"files"] : nil;
+            if (!client) return;
+            client->_transferring = NO;
+            if (!selection) { clipboardNotice(failure); return; }
+            if (!client->_connected || NSPasteboard.generalPasteboard.changeCount != revision) {
+                dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                    clipboardFilesCommand(@[@"--connection", @"local", @"release", selection], NULL);
+                });
+                return;
+            }
+            client->_pendingSerial = ++client->_serial;
+            client->_lastRequest = NSProcessInfo.processInfo.systemUptime;
+            [client send:@{@"files":selection, @"serial":@(client->_pendingSerial)}];
+        });
+    });
+}
+- (void)receiveFiles:(NSString *)selection {
+    _transferring = YES;
+    NSInteger expected = NSPasteboard.generalPasteboard.changeCount;
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSString *failure = nil;
+        NSDictionary *result = clipboardFilesCommand(@[@"--connection", @"local", @"receive", selection], &failure);
+        // The local cache now holds the files; the guest snapshot can go.
+        clipboardFilesCommand(@[@"--connection", @"local", @"release", selection], NULL);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            CageDesktopClipboard *client = weakSelf;
+            NSArray *paths = [result[@"paths"] isKindOfClass:NSArray.class] ? result[@"paths"] : nil;
+            NSString *cache = [result[@"cache_id"] isKindOfClass:NSString.class] ? result[@"cache_id"] : @"";
+            if (!client) return;
+            client->_transferring = NO;
+            if (!paths.count) { clipboardNotice(failure); return; }
+            NSPasteboard *board = NSPasteboard.generalPasteboard;
+            NSMutableArray<NSURL *> *urls = [NSMutableArray arrayWithCapacity:paths.count];
+            for (NSString *path in paths) if ([path isKindOfClass:NSString.class]) [urls addObject:[NSURL fileURLWithPath:path]];
+            if (board.changeCount != expected || urls.count != paths.count) { [client releaseCache:cache]; return; }
+            [board clearContents];
+            if (![board writeObjects:urls]) { [client releaseCache:cache]; return; }
+            client->_hostRevision = board.changeCount;
+            if (cache.length) {
+                client->_caches[cache] = paths;
+                dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ clipboardCacheCommand(@"publish", cache); });
+            }
+        });
+    });
+}
+- (void)releaseCache:(NSString *)cache {
+    if (!cache.length) return;
+    [_caches removeObjectForKey:cache];
+    [_unreferenced removeObjectForKey:cache];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ clipboardCacheCommand(@"release", cache); });
+}
+// Cached guest files stay on disk while the Mac clipboard refers to them, and
+// for ten minutes afterwards so a Finder copy that is still running can finish.
+- (void)collectCaches {
+    if (!_caches) {
+        _caches = [NSMutableDictionary dictionary];
+        _unreferenced = [NSMutableDictionary dictionary];
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            NSArray *selections = clipboardCacheCommand(@"list", nil)[@"selections"];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                CageDesktopClipboard *client = weakSelf;
+                if (!client || ![selections isKindOfClass:NSArray.class]) return;
+                for (NSDictionary *selection in selections) {
+                    if (![selection isKindOfClass:NSDictionary.class]) continue;
+                    NSString *cache = selection[@"cache_id"];
+                    NSArray *paths = selection[@"paths"];
+                    if ([cache isKindOfClass:NSString.class] && [paths isKindOfClass:NSArray.class] && paths.count && !client->_caches[cache])
+                        client->_caches[cache] = paths;
+                }
+            });
+        });
+        return;
+    }
+    NSArray<NSURL *> *current = [NSPasteboard.generalPasteboard readObjectsForClasses:@[NSURL.class]
+        options:@{NSPasteboardURLReadingFileURLsOnlyKey:@YES}] ?: @[];
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    for (NSString *cache in _caches.allKeys) {
+        NSString *first = _caches[cache].firstObject;
+        if (![first isKindOfClass:NSString.class]) { [self releaseCache:cache]; continue; }
+        NSString *root = first.stringByDeletingLastPathComponent.stringByStandardizingPath;
+        BOOL referenced = NO;
+        for (NSURL *url in current) {
+            NSString *path = url.path.stringByStandardizingPath;
+            if ([path isEqualToString:root] || [path hasPrefix:[root stringByAppendingString:@"/"]]) { referenced = YES; break; }
+        }
+        if (referenced) { [_unreferenced removeObjectForKey:cache]; continue; }
+        NSNumber *since = _unreferenced[cache];
+        if (!since) _unreferenced[cache] = @(now);
+        else if (now - since.doubleValue > 600) [self releaseCache:cache];
+    }
 }
 - (void)dealloc {
     [_timer invalidate];

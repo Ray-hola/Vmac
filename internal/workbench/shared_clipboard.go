@@ -250,8 +250,10 @@ func (s *Server) clipboardFileSelection(id string) clipboardFileSelection {
 }
 
 func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
-	contentOnly := version.MacOSGuestOnly && s.macosGuest != nil
-	if contentOnly && !s.nativeMacOSTransferReady(w, r) {
+	// The VMac window owns the only clipboard stream; it carries text, images
+	// and file selections, which move through /api/clipboard/files.
+	native := version.MacOSGuestOnly && s.macosGuest != nil
+	if native && !s.nativeMacOSTransferReady(w, r) {
 		return
 	}
 	s.mu.Lock()
@@ -268,11 +270,7 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { cancel(); s.mu.Lock(); s.clipboardCancel = nil; s.clipboardRelease = nil; s.mu.Unlock() }()
 	// 以当前后端配套的辅助脚本启动连接，保留 stdin/stdout 传输剪贴板数据。
-	operation := "stream"
-	if contentOnly {
-		operation = "stream-content"
-	}
-	cmd, source, err := s.clipboardCommand(ctx, operation, clipboardFileSelection{})
+	cmd, source, err := s.clipboardCommand(ctx, "stream", clipboardFileSelection{})
 	if err != nil {
 		http.Error(w, "剪贴板客机配置无效", 502)
 		return
@@ -318,9 +316,6 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 		for scanner.Scan() {
 			var payload clipboardPayload
 			if json.Unmarshal(scanner.Bytes(), &payload) != nil {
-				return
-			}
-			if contentOnly && payload.Files != nil {
 				return
 			}
 			if payload.Hello != nil {
@@ -383,10 +378,10 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 		if payload.Release != nil {
 			return
 		}
-		if contentOnly {
+		if native {
 			value := nativeClipboardValue{Text: payload.Text, PNG: payload.PNG}
-			if payload.Files != nil || (payload.Subscribe && (value.Text != nil || value.PNG != "")) ||
-				(!payload.Subscribe && !value.valid()) {
+			if (payload.Subscribe && (value.Text != nil || value.PNG != "" || payload.Files != nil)) ||
+				(!payload.Subscribe && payload.Files == nil && !value.valid()) {
 				return
 			}
 		}
