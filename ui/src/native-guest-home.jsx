@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { api, native } from "./api";
+import { useAccount } from "./account";
 import { requestMacOSRecovery } from "./macos-recovery";
 import { Modal } from "./modal";
 import { networkState } from "./safety-state.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
 import { SpaceManagement } from "./space-management";
-import { DiskCapacity, VMProfiles } from "./vmac-management";
+import { DiskCapacity, GuestLoginDetails, GuestTimezone, VMProfiles } from "./vmac-management";
 import { ChecksPage, protectionText, protectionTone, useVMacProtection } from "./vmac-checks";
 import { GuestOverview, guestPhase } from "./vmac-overview";
 import { PageHeader, Segmented, StatusChip } from "./vmac-ui";
@@ -21,7 +22,7 @@ const titles = {
   checks: "环境检测",
 };
 const subtitles = {
-  space: "扩大虚拟磁盘、清理客机缓存，或切换到另一台 macOS 客机。",
+  space: "管理磁盘、虚拟机、客机账户和时区。",
   proxy: "选择出口节点、管理订阅，所有客机共用这套代理。",
   checks: "核对隔离报告、网关保护和 Claude 站点连通。",
 };
@@ -30,6 +31,7 @@ const phaseChip = {
 };
 
 export function NativeGuestHome({ setup = null }) {
+  const { account } = useAccount();
   useEffect(() => { document.documentElement.classList.add("vmac-theme"); }, []);
   const [status, setStatus] = useState(null);
   const [page, setPage] = useState("lifecycle");
@@ -305,7 +307,7 @@ export function NativeGuestHome({ setup = null }) {
         onStop={stop} onOpen={() => openDesktop()} onNavigate={navigate} /> :
       page === "space" ? <>
         <Segmented label="虚拟机管理" value={vmTab} onChange={setVMTab}
-          items={[["space", "存储空间"], ["profiles", "虚拟机"]]} />
+          items={[["space", "存储空间"], ["profiles", "虚拟机"], ["login", "客机账户"], ["timezone", "时区"]]} />
         <div className="vm-tabpanel" key={vmTab}>
           {vmTab === "space" ? <>
             {installed ? <DiskCapacity status={status} onConfirm={confirm} onChanged={() => { setDisk(null); void pollNow.current?.(); }} /> : <section className="vm-card vm-empty" aria-label="虚拟磁盘">
@@ -313,7 +315,10 @@ export function NativeGuestHome({ setup = null }) {
               <button className="primary" onClick={() => navigate("desktop")}>打开安装向导</button>
             </section>}
             {installed && <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} onStart={() => lifecycleAction.current?.("start")} running={status.vm_running} />}
-          </> : <VMProfiles status={status} onConfirm={confirm} />}
+          </> : vmTab === "profiles" ? <VMProfiles status={status} onConfirm={confirm} /> :
+            vmTab === "login" ? <GuestLoginDetails installed={installed} username={account?.macos_guest_user} passwordPending={account?.macos_password_pending} /> :
+              <GuestTimezone status={status} installed={installed} settingsOpen={Boolean(section)}
+                onSettings={() => openSettings("region")} onRestart={() => lifecycleAction.current?.("restart")} />}
         </div>
       </> : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
           onConfirm={confirm} onSettings={openSettings} onInstall={setup && !installed ? () => navigate("desktop") : undefined} />

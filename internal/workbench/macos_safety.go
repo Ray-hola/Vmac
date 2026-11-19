@@ -305,13 +305,18 @@ func (s *Server) checkMacOSNetwork() error {
 		}
 	}
 	ctx := s.operationContext()
-	if !managedproxy.Running(ctx, s.profile, store) {
-		if err = validateProxyCore(ctx, s.profile, store); err != nil {
-			return err
-		}
-		if err = startProxyCore(ctx, s.profile, store); err != nil {
-			return err
-		}
+	if err := s.ensureMacOSProxyRunning(ctx, store); err != nil {
+		return err
 	}
 	return s.runSafetyCheck()
+}
+
+func (s *Server) ensureMacOSProxyRunning(ctx context.Context, store managedproxy.Store) error {
+	if managedproxy.Running(ctx, s.profile, store) {
+		return nil
+	}
+	if err := validateProxyCore(ctx, s.profile, store); err != nil {
+		return err
+	}
+	return startProxyCore(ctx, s.profile, store)
 }

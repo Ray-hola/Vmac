@@ -19,6 +19,8 @@ import (
 	"github.com/Ray-hola/Vmac/internal/cage"
 	"github.com/Ray-hola/Vmac/internal/guestos"
 	"github.com/Ray-hola/Vmac/internal/host"
+	"github.com/Ray-hola/Vmac/internal/managedproxy"
+	"github.com/Ray-hola/Vmac/internal/paths"
 	"github.com/Ray-hola/Vmac/internal/version"
 )
 
@@ -261,6 +263,9 @@ func (s *Server) macOSLifecycleCommand(action string) error {
 func (s *Server) startMacOSGuest() error {
 	starting := !s.vmRunning()
 	if starting {
+		if err := s.prepareMacOSStartupTimezone(s.operationContext()); err != nil {
+			return err
+		}
 		if err := s.macOSLifecycleCommand("start"); err != nil {
 			return err
 		}
@@ -292,6 +297,76 @@ func (s *Server) startMacOSGuest() error {
 		return err
 	}
 	return s.checkNetworkIfWanted()
+}
+
+func macOSStartupTimezone(cfg cage.Config, location Location) string {
+	zone := location.Timezone
+	if zone == "" || zone == "Local" || macOSZone(zone) == macOSZone(cfg.Timezone) {
+		return cfg.Timezone
+	}
+	if _, err := time.LoadLocation(zone); err != nil {
+		return cfg.Timezone
+	}
+	observed := location.exitLocation()
+	if state, _ := cfg.ExitPolicy.BindMissing(observed).Evaluate(location.IP, &observed); state != cage.CheckPassed {
+		return cfg.Timezone
+	}
+	return zone
+}
+
+func (s *Server) prepareMacOSStartupTimezone(ctx context.Context) error {
+	s.mu.Lock()
+	automatic, paused, pauseVersion := s.preferences.AutoTimezone, s.networkPaused, s.safety.pauseVersion
+	s.mu.Unlock()
+	if !automatic || paused || s.macSetupPending() {
+		return ctx.Err()
+	}
+	cfg, err := loadConfig(s.configPath)
+	if err != nil {
+		return err
+	}
+	store, err := managedproxy.Applied(s.profile, cfg.ProxyURL, cfg.ProxyRevision)
+	if err != nil {
+		return ctx.Err()
+	}
+	s.setMessage("正在查询代理出口的时区…")
+	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := s.ensureMacOSProxyRunning(probeCtx, store); err != nil {
+		return ctx.Err()
+	}
+	location, err := probeLocation(probeCtx, cfg)
+	if err != nil {
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.finishLocationProbe(cfg, location, nil); err != nil {
+		return err
+	}
+	zone := macOSStartupTimezone(cfg, location)
+	if zone == cfg.Timezone {
+		return nil
+	}
+	return s.applyMacOSStartupTimezone(ctx, cfg, zone, pauseVersion)
+}
+
+func (s *Server) applyMacOSStartupTimezone(ctx context.Context, cfg cage.Config, zone string, pauseVersion uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.networkPaused || s.safety.pauseVersion != pauseVersion || !s.preferences.AutoTimezone {
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	current, err := loadConfig(s.configPath)
+	if err != nil || current.Fingerprint() != cfg.Fingerprint() {
+		return err
+	}
+	current.Timezone = zone
+	return writePrivate(paths.VMacConfigPath(s.configPath), current)
 }
 
 // The guest browser bridge may come up after the SSH service.

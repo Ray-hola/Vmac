@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Check, HardDrive, LoaderCircle, Minus, Monitor, Plus, X } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Check, Clock3, Copy, Eye, EyeOff, HardDrive, KeyRound, LoaderCircle, Minus, Monitor, Plus, X } from "lucide-react";
 import { api, native } from "./api";
 import { StatusChip, gib } from "./vmac-ui";
 
@@ -15,6 +15,119 @@ async function waitForJob(accepted) {
 }
 
 const maxGiB = 2048;
+
+export function GuestLoginDetails({ installed, username, passwordPending }) {
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const request = useRef(null);
+
+  useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => {
+    if (!password) return;
+    const timer = setTimeout(() => setPassword(""), 30_000);
+    return () => clearTimeout(timer);
+  }, [password]);
+
+  async function reveal() {
+    if (request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true);
+    setNotice("");
+    setError("");
+    try {
+      const result = await api("/macos/login", { action: "show-password" }, undefined, {}, { signal: controller.signal });
+      if (!controller.signal.aborted) setPassword(result.password);
+    } catch (failure) {
+      if (!controller.signal.aborted) setError(failure.message);
+    } finally {
+      request.current = null;
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }
+  async function copyPassword() {
+    setNotice("");
+    setError("");
+    try {
+      await native("clipboardWrite", { text: password, confidential: true });
+      setNotice("密码已复制");
+    } catch {
+      setError("无法复制密码，请检查剪贴板权限。");
+    }
+  }
+
+  return <section className="vm-card" aria-label="macOS 客机登录信息">
+    <div className="vm-card-head">
+      <div className="vm-card-title"><span className="vm-card-icon"><KeyRound size={17} aria-hidden="true" /></span>
+        <div><h2>macOS 客机登录信息</h2><p>{installed ? "用于登录当前虚拟机的 macOS。" : "完成 macOS 安装后即可查看。"}</p></div>
+      </div>
+    </div>
+    {installed && <>
+      <dl className="vm-guest-details">
+        <div><dt>用户名</dt><dd>{username ? <code>{username}</code> : "暂未读取到"}</dd></div>
+        <div><dt>密码</dt><dd>{password ? <code>{password}</code> : <span aria-label="密码已隐藏">••••••••</span>}</dd></div>
+      </dl>
+      {passwordPending && <p className="vm-note">客机密码待同步，请使用上次确认的密码。</p>}
+      <div className="vm-actions">
+        {password ? <>
+          <button type="button" onClick={() => setPassword("")}><EyeOff size={15} aria-hidden="true" />隐藏密码</button>
+          <button type="button" onClick={copyPassword}><Copy size={15} aria-hidden="true" />复制密码</button>
+          <span className="vm-note">30 秒后隐藏</span>
+        </> : <button type="button" disabled={loading} onClick={reveal}>
+          {loading ? <LoaderCircle size={15} className="spin" aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
+          {loading ? "正在读取…" : "查看密码"}
+        </button>}
+      </div>
+      {notice && <p className="vm-success" role="status">{notice}</p>}
+      {error && <p className="vm-error" role="alert">{error}</p>}
+    </>}
+  </section>;
+}
+
+const timezoneKey = zone => ["+00:00", "GMT", "UTC", "Etc/GMT", "Etc/UTC"].includes(zone) ? "UTC" : zone;
+
+export function GuestTimezone({ status, installed, settingsOpen, onSettings, onRestart }) {
+  const [timezone, setTimezone] = useState("");
+  const [error, setError] = useState("");
+  const busy = Boolean(status.job?.running);
+  const automatic = status.auto_timezone;
+  const suggested = status.location?.timezone;
+  const pending = automatic && timezone && suggested && timezoneKey(timezone) !== timezoneKey(suggested);
+
+  useEffect(() => {
+    if (!installed || busy || settingsOpen) return;
+    const controller = new AbortController();
+    api("/settings", undefined, undefined, {}, { signal: controller.signal }).then(value => {
+      if (!controller.signal.aborted) {
+        setTimezone(value.timezone);
+        setError("");
+      }
+    }).catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
+    return () => controller.abort();
+  }, [installed, busy, status.job?.id, settingsOpen]);
+
+  return <section className="vm-card" aria-label="时区自动适配">
+    <div className="vm-card-head">
+      <div className="vm-card-title"><span className="vm-card-icon"><Clock3 size={17} aria-hidden="true" /></span>
+        <div><h2>时区自动适配</h2><p>{installed ? "启动或重启客机时，按当前代理出口匹配时区。" : "完成 macOS 安装后即可设置。"}</p></div>
+      </div>
+      {installed && <StatusChip tone={pending ? "warn" : automatic ? "ok" : "idle"}>{pending ? "待应用" : automatic ? "跟随出口" : "手动"}</StatusChip>}
+    </div>
+    {installed && <>
+      <dl className="vm-guest-details">
+        <div><dt>已配置时区</dt><dd>{timezone ? <code>{timezone}</code> : error ? "未读取" : "正在读取…"}</dd></div>
+        <div><dt>出口时区</dt><dd>{suggested ? <code>{suggested}</code> : "等待检测"}</dd></div>
+      </dl>
+      <div className="vm-actions">
+        <button type="button" onClick={onSettings}>时区与语言设置</button>
+        {pending && status.vm_running && <button type="button" className="primary" disabled={busy} onClick={onRestart}>重启并应用</button>}
+      </div>
+      {error && <p className="vm-error" role="alert">{error}</p>}
+    </>}
+  </section>;
+}
 
 export function DiskCapacity({ status, onConfirm, onChanged }) {
   const [disk, setDisk] = useState(null);

@@ -883,6 +883,15 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             fileCommand(["upload-files", "--json", "--connection", body["connection_id"] as? String ?? "local", target, id] + files.paths, reply: replyHandler)
         case "clipboardWrite":
             guard let text = body["text"] as? String else { replyHandler(nil,"缺少文本"); return }
+            if body["confidential"] as? Bool == true {
+                do {
+                    try MacGuestLoginCredential.copyToClipboard(text)
+                    replyHandler(true,nil)
+                } catch {
+                    replyHandler(nil,error.localizedDescription)
+                }
+                return
+            }
             NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType:.string); replyHandler(true,nil)
         case "saveBrowserDownload":
             guard !nativeFilePanelOpen, let id = body["id"] as? String, UUID(uuidString:id) != nil else { replyHandler(nil,"请先完成当前文件窗口"); return }
