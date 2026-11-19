@@ -266,6 +266,11 @@ private final class ClipboardAgent: @unchecked Sendable {
     private var revision: Int
     private var snapshotPending = false
     private var transfers: [UUID: Process] = [:]
+    // Text typed with the Mac's input method is pasted through a transient
+    // clipboard entry; the user's clipboard is restored afterwards.
+    private var typedSaved: [NSPasteboardItem]?
+    private var typedChange = 0
+    private var typedSerial = 0
     private let helper: URL
     init(board: NSPasteboard = .general, gui: @escaping () -> Bool = guiAvailable,
          diagnostic: @escaping (String) -> Void = { GuestDiagnostic.record("clipboard", $0) }) {
@@ -285,7 +290,7 @@ private final class ClipboardAgent: @unchecked Sendable {
         let files = FileManager.default.isExecutableFile(atPath: helper.path)
         return ["hello": ["version": 1, "os": "darwin", "session": session, "formats": ["text", "png", "files"],
                           "available": gui && files,
-                          "file_release": true,
+                          "file_release": true, "subscribe": true, "type_text": true,
                           "reason": !gui ? "requires_gui_login" : (!files ? "files_helper_missing" : "")]]
     }
     private func record(_ files: [String], copied: Bool = false) {
@@ -424,6 +429,40 @@ private final class ClipboardAgent: @unchecked Sendable {
             return ["ack": value["serial"] as? Int ?? 0, "revision": board.changeCount]
         }
     }
+    private func typeText(_ text: String, serial: Int) throws -> [String: Any] {
+        try onGUI {
+            try check()
+            guard !text.isEmpty, text.utf8.count <= 8192 else { throw ClipboardFailure("input_text_limit") }
+            // Keep the user's own clipboard across consecutive typed chunks.
+            if typedSaved == nil || board.changeCount != typedChange {
+                typedSaved = (board.pasteboardItems ?? []).map { original in
+                    let item = NSPasteboardItem()
+                    for type in original.types { if let data = original.data(forType: type) { item.setData(data, forType: type) } }
+                    return item
+                }
+            }
+            let item = NSPasteboardItem()
+            item.setString(text, forType: .string)
+            item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+            board.clearContents()
+            guard board.writeObjects([item]) else { throw ClipboardFailure("clipboard_write_failed") }
+            typedChange = board.changeCount
+            typedSerial = serial
+            revision = board.changeCount
+            return ["ack": serial, "typed": serial]
+        }
+    }
+    private func restoreTyped(_ serial: Int) {
+        onGUI {
+            guard serial == typedSerial, let saved = typedSaved else { return }
+            typedSaved = nil
+            // Another copy after the paste wins over the saved clipboard.
+            guard board.changeCount == typedChange else { return }
+            board.clearContents()
+            if !saved.isEmpty { board.writeObjects(saved) }
+            revision = board.changeCount
+        }
+    }
     private func copiedText(_ request: [String: Any]) throws -> [String: Any] {
         guard let expected = request["revision"] as? Int, let epoch = request["session"] as? String else { throw ClipboardFailure("invalid_copy_request") }
         let deadline = Date().addingTimeInterval(2)
@@ -514,7 +553,11 @@ private final class ClipboardAgent: @unchecked Sendable {
                 while let line = try reader.line() {
                     do {
                         let value = try json(line)
-                        if connection.contentOnly && value["subscribe"] as? Bool == true {
+                        if let text = value["type_text"] as? String {
+                            try connection.send(typeText(text, serial: value["serial"] as? Int ?? 0))
+                        } else if let serial = value["restore_text"] as? Int {
+                            restoreTyped(serial)
+                        } else if value["subscribe"] as? Bool == true {
                             try onGUI {
                                 try check()
                                 if !streams.values.contains(where: { $0.initialized }) { revision = board.changeCount }
@@ -754,6 +797,20 @@ private func testAgentTransport(_ board: NSPasteboard) throws {
             guard let acknowledged = try reader.line(), try json(acknowledged)["ack"] as? Int == 9 else { throw ClipboardFailure("test_ack_failed") }
             onGUI { board.clearContents(); board.setString("guest pushed text", forType: .string); agent.poll() }
             guard let pushed = try reader.line(), try json(pushed)["text"] as? String == "guest pushed text" else { throw ClipboardFailure("test_push_failed") }
+            guard hello["subscribe"] as? Bool == true, hello["type_text"] as? Bool == true else { throw ClipboardFailure("test_capabilities_missing") }
+            try writeAll(fd, jsonData(["subscribe": true]))
+            onGUI { board.clearContents(); board.setString("user clipboard", forType: .string); agent.poll() }
+            guard let subscribed = try reader.line(), try json(subscribed)["text"] as? String == "user clipboard" else { throw ClipboardFailure("test_subscribe_failed") }
+            try writeAll(fd, jsonData(["type_text": "你好", "serial": 11]))
+            guard let typed = try reader.line(), try json(typed)["typed"] as? Int == 11,
+                  onGUI({ board.string(forType: .string) }) == "你好" else { throw ClipboardFailure("test_type_text_failed") }
+            onGUI { agent.poll() }
+            try writeAll(fd, jsonData(["restore_text": 11]))
+            let restoreDeadline = Date().addingTimeInterval(5)
+            while onGUI({ board.string(forType: .string) }) != "user clipboard", Date() < restoreDeadline {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            guard onGUI({ board.string(forType: .string) }) == "user clipboard" else { throw ClipboardFailure("test_restore_text_failed") }
 
             var bytes = Data([0, 255, 128, 10])
             var length = UInt32(bytes.count).littleEndian

@@ -58,6 +58,7 @@ type Server struct {
 	macProjectsRetryAt                               time.Time
 	macLoginLease                                    *macLoginLease
 	macosGuest                                       *guestos.MacOSProfile
+	clipboardContentOnlyGuest                        bool
 	screenSharing                                    macOSScreenSharing
 	macResources                                     macOSResourceObserver
 	windowsGuest                                     *guestos.WindowsProfile

@@ -9,16 +9,43 @@
 @property(nonatomic) BOOL shuttingDown;
 @property(nonatomic, strong) CageDesktopClipboard *clipboard;
 - (void)bringForward;
+- (void)showNotice:(NSString *)message;
 - (BOOL)acceptDrop:(id<NSDraggingInfo>)sender perform:(BOOL)perform;
 @end
 
-@interface CageDropVMView : VZVirtualMachineView
+@interface CageDropVMView : VZVirtualMachineView <NSTextInputClient>
 @property(nonatomic, weak) CageNativeVMWindow *owner;
 @end
 
-@implementation CageDropVMView
+static BOOL plainASCII(NSString *text) {
+    if (text.length != 1) return NO;
+    unichar c = [text characterAtIndex:0];
+    return c >= 0x20 && c < 0x7f;
+}
+
+// With the Mac's input method selected, keys are composed on the Mac and the
+// committed text is pasted into the guest; everything else stays a raw key.
+@implementation CageDropVMView {
+    NSEvent *_keyEvent;
+    NSString *_marked;
+    NSTextField *_compose;
+    NSMutableSet<NSNumber *> *_heldKeys;
+    NSMutableArray<NSEvent *> *_deferred;
+    NSUInteger _typing;
+    NSTextInputContext *_textInput;
+}
+// The guest view has no text of its own; supply a context for the Mac's
+// input method even if the framework view does not create one.
+- (NSTextInputContext *)inputContext {
+    if (!_textInput) _textInput = [[NSTextInputContext alloc] initWithClient:self];
+    return _textInput;
+}
 - (instancetype)initWithFrame:(NSRect)frame {
-    if ((self = [super initWithFrame:frame])) [self registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
+    if ((self = [super initWithFrame:frame])) {
+        [self registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
+        _heldKeys = [NSMutableSet set];
+        _deferred = [NSMutableArray array];
+    }
     return self;
 }
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
@@ -29,6 +56,137 @@
 }
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
     return [self.owner acceptDrop:sender perform:YES];
+}
+- (BOOL)routesThroughHostInputMethod:(NSEvent *)event {
+    if (_marked.length) return YES;
+    if (!hostInputMethodEnabled() || !self.owner.clipboard.canTypeText) return NO;
+    if (event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) return NO;
+    NSString *source = self.inputContext.selectedKeyboardInputSource;
+    return source.length && ![source hasPrefix:@"com.apple.keylayout."];
+}
+- (void)forwardKeyDown:(NSEvent *)event {
+    [_heldKeys addObject:@(event.keyCode)];
+    [super keyDown:event];
+}
+- (BOOL)deferEvent:(NSEvent *)event {
+    if (!_typing && !_deferred.count) return NO;
+    if (_deferred.count < 256) [_deferred addObject:event];
+    return YES;
+}
+- (void)flushDeferred {
+    while (_deferred.count && !_typing) {
+        NSEvent *event = _deferred.firstObject;
+        [_deferred removeObjectAtIndex:0];
+        if (event.type == NSEventTypeKeyDown) [self handleKeyDown:event];
+        else if (event.type == NSEventTypeKeyUp) [self handleKeyUp:event];
+        else [super flagsChanged:event];
+    }
+}
+- (void)keyDown:(NSEvent *)event {
+    if (![self deferEvent:event]) [self handleKeyDown:event];
+}
+- (void)handleKeyDown:(NSEvent *)event {
+    if (![self routesThroughHostInputMethod:event]) { [self forwardKeyDown:event]; return; }
+    _keyEvent = event;
+    BOOL handled = [self.inputContext handleEvent:event];
+    // Keys the input method did not use still belong to the guest.
+    if (!handled && _keyEvent == event) [self forwardKeyDown:event];
+    _keyEvent = nil;
+}
+- (void)keyUp:(NSEvent *)event {
+    if (![self deferEvent:event]) [self handleKeyUp:event];
+}
+- (void)handleKeyUp:(NSEvent *)event {
+    // Only release keys whose press reached the guest.
+    if (![_heldKeys containsObject:@(event.keyCode)]) return;
+    [_heldKeys removeObject:@(event.keyCode)];
+    [super keyUp:event];
+}
+- (void)flagsChanged:(NSEvent *)event {
+    if (![self deferEvent:event]) [super flagsChanged:event];
+}
+- (void)showComposition:(NSString *)text {
+    if (!text.length) { _compose.hidden = YES; return; }
+    if (!_compose) {
+        _compose = [NSTextField labelWithString:@""];
+        _compose.font = [NSFont systemFontOfSize:15];
+        _compose.textColor = NSColor.whiteColor;
+        _compose.wantsLayer = YES;
+        _compose.layer.backgroundColor = [NSColor colorWithWhite:0.1 alpha:0.82].CGColor;
+        _compose.layer.cornerRadius = 7;
+        _compose.alignment = NSTextAlignmentCenter;
+        [self addSubview:_compose];
+    }
+    _compose.stringValue = text;
+    NSSize size = _compose.intrinsicContentSize;
+    _compose.frame = NSMakeRect(24, 24, MIN(size.width + 20, NSWidth(self.bounds) - 48), size.height + 8);
+    _compose.hidden = NO;
+}
+- (void)clearComposition {
+    _marked = nil;
+    _compose.hidden = YES;
+}
+- (void)pasteText:(NSString *)text {
+    CageDesktopClipboard *clipboard = self.owner.clipboard;
+    _typing++;
+    __weak typeof(self) weakSelf = self;
+    [clipboard typeText:text ready:^(BOOL ok) {
+        CageDropVMView *view = weakSelf;
+        if (!view) return;
+        if (ok) [view sendPasteShortcut];
+        else [view.owner showNotice:@"Mac 输入法的文字没能送进客机，请重试或改用客机输入法"];
+        view->_typing--;
+        [view flushDeferred];
+    }];
+}
+- (void)sendPasteShortcut {
+    NSInteger window = self.window.windowNumber;
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    NSEvent *(^key)(NSEventType, NSEventModifierFlags, unsigned short, NSString *) =
+        ^(NSEventType type, NSEventModifierFlags flags, unsigned short code, NSString *characters) {
+            return [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:flags timestamp:now windowNumber:window
+                                     context:nil characters:characters charactersIgnoringModifiers:characters isARepeat:NO keyCode:code];
+        };
+    [super flagsChanged:key(NSEventTypeFlagsChanged, NSEventModifierFlagCommand, 55, @"")];
+    [super keyDown:key(NSEventTypeKeyDown, NSEventModifierFlagCommand, 9, @"v")];
+    [super keyUp:key(NSEventTypeKeyUp, NSEventModifierFlagCommand, 9, @"v")];
+    [super flagsChanged:key(NSEventTypeFlagsChanged, 0, 55, @"")];
+}
+
+#pragma mark NSTextInputClient
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
+    NSString *text = [string isKindOfClass:NSAttributedString.class] ? [string string] : string;
+    BOOL composing = _marked.length > 0;
+    [self clearComposition];
+    NSEvent *event = _keyEvent;
+    _keyEvent = nil;
+    // A plain character straight from a key press is sent as that key, so the
+    // guest's own layout, shortcuts and key repeat keep working.
+    if (!composing && event && plainASCII(text) && [text isEqualToString:event.characters]) { [self forwardKeyDown:event]; return; }
+    if (text.length) [self pasteText:text];
+}
+- (void)doCommandBySelector:(SEL)selector {
+    NSEvent *event = _keyEvent;
+    _keyEvent = nil;
+    if (event) [self forwardKeyDown:event];
+}
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
+    _keyEvent = nil;
+    NSString *text = [string isKindOfClass:NSAttributedString.class] ? [string string] : string;
+    _marked = text.length ? [text copy] : nil;
+    [self showComposition:text];
+}
+- (void)unmarkText { [self clearComposition]; }
+- (BOOL)hasMarkedText { return _marked.length > 0; }
+- (NSRange)markedRange { return _marked.length ? NSMakeRange(0, _marked.length) : NSMakeRange(NSNotFound, 0); }
+- (NSRange)selectedRange { return NSMakeRange(_marked.length, 0); }
+- (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText { return @[]; }
+- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange { return nil; }
+- (NSUInteger)characterIndexForPoint:(NSPoint)point { return NSNotFound; }
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+    // The guest caret is not visible to the Mac; candidates follow the overlay.
+    NSRect local = _compose && !_compose.hidden ? _compose.frame : NSMakeRect(24, 24, 1, 22);
+    return self.window ? [self.window convertRectToScreen:[self convertRect:local toView:nil]] : NSZeroRect;
 }
 @end
 

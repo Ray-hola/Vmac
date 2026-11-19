@@ -57,6 +57,11 @@ type clipboardPayload struct {
 	Ack       int             `json:"ack,omitempty"`
 	Release   []string        `json:"release,omitempty"`
 	Subscribe bool            `json:"subscribe,omitempty"`
+	// Text committed by the Mac's input method, pasted through a transient
+	// guest clipboard entry and then restored.
+	TypeText    *string `json:"type_text,omitempty"`
+	RestoreText int     `json:"restore_text,omitempty"`
+	Typed       int     `json:"typed,omitempty"`
 }
 
 type clipboardHello struct {
@@ -66,6 +71,8 @@ type clipboardHello struct {
 	Formats     []string `json:"formats"`
 	Available   bool     `json:"available"`
 	FileRelease bool     `json:"file_release,omitempty"`
+	Subscribe   bool     `json:"subscribe,omitempty"`
+	TypeText    bool     `json:"type_text,omitempty"`
 }
 
 // The profile chooses the transport. A guest file selection can never choose
@@ -270,7 +277,15 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { cancel(); s.mu.Lock(); s.clipboardCancel = nil; s.clipboardRelease = nil; s.mu.Unlock() }()
 	// 以当前后端配套的辅助脚本启动连接，保留 stdin/stdout 传输剪贴板数据。
-	cmd, source, err := s.clipboardCommand(ctx, "stream", clipboardFileSelection{})
+	// Guest agents before the subscribe capability only accept content-only
+	// streams; the first hello tells which kind is installed.
+	operation := "stream"
+	s.mu.Lock()
+	if native && s.clipboardContentOnlyGuest {
+		operation = "stream-content"
+	}
+	s.mu.Unlock()
+	cmd, source, err := s.clipboardCommand(ctx, operation, clipboardFileSelection{})
 	if err != nil {
 		http.Error(w, "剪贴板客机配置无效", 502)
 		return
@@ -330,6 +345,13 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 				if hello.Version != 1 || hello.OS != expectedOS || len(hello.Session) == 0 || len(hello.Session) > 256 {
 					return
 				}
+				if native && (operation == "stream") != hello.Subscribe {
+					// Reconnect with the stream kind this guest agent supports.
+					s.mu.Lock()
+					s.clipboardContentOnlyGuest = !hello.Subscribe
+					s.mu.Unlock()
+					return
+				}
 				s.mu.Lock()
 				changed := s.clipboardGuestSession != "" && s.clipboardGuestSession != hello.Session
 				s.mu.Unlock()
@@ -380,8 +402,24 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 		}
 		if native {
 			value := nativeClipboardValue{Text: payload.Text, PNG: payload.PNG}
-			if (payload.Subscribe && (value.Text != nil || value.PNG != "" || payload.Files != nil)) ||
-				(!payload.Subscribe && payload.Files == nil && !value.valid()) {
+			content := value.Text != nil || value.PNG != "" || payload.Files != nil
+			typing := payload.TypeText != nil || payload.RestoreText != 0
+			switch {
+			case typing:
+				if content || payload.Subscribe || operation != "stream" ||
+					(payload.TypeText != nil && (len(*payload.TypeText) == 0 || len(*payload.TypeText) > 8192)) ||
+					(payload.TypeText != nil && payload.RestoreText != 0) || payload.RestoreText < 0 {
+					return
+				}
+			case payload.Subscribe:
+				if content {
+					return
+				}
+			case payload.Files != nil:
+				if operation != "stream" {
+					return
+				}
+			case !value.valid():
 				return
 			}
 		}

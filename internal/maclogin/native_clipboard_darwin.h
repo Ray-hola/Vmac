@@ -85,8 +85,19 @@ static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
     return text ? clipboardFilesCommand(@[@"cache", text], NULL) : nil;
 }
 
+// Both default to on; the File menu stores an explicit choice.
+static BOOL vmacPreference(NSString *key) {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    return [defaults objectForKey:key] == nil || [defaults boolForKey:key];
+}
+static BOOL clipboardSharingEnabled(void) { return vmacPreference(@"vmac.shareClipboardContent"); }
+static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInputMethod"); }
+
 @interface CageDesktopClipboard : NSObject
+@property(nonatomic, readonly) BOOL canTypeText;
 - (void)setDesktopVisible:(BOOL)visible;
+// Puts text on the guest clipboard; ready runs once the guest can paste it.
+- (void)typeText:(NSString *)text ready:(void (^)(BOOL ok))ready;
 @end
 
 @implementation CageDesktopClipboard {
@@ -104,6 +115,10 @@ static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
     NSTimeInterval _lastCollect;
     NSMutableDictionary<NSString *, NSArray<NSString *> *> *_caches;
     NSMutableDictionary<NSString *, NSNumber *> *_unreferenced;
+    BOOL _filesEnabled;
+    BOOL _typingEnabled;
+    BOOL _subscribed;
+    NSMutableArray<NSMutableDictionary *> *_typingQueue;
 }
 - (void)closeConnection {
     [_task.standardOutput fileHandleForReading].readabilityHandler = nil;
@@ -112,15 +127,50 @@ static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
     _writer = nil;
     _connected = NO;
     _pendingSerial = 0;
+    _filesEnabled = NO;
+    _typingEnabled = NO;
+    _subscribed = NO;
+    NSArray *abandoned = _typingQueue;
+    _typingQueue = nil;
+    for (NSDictionary *entry in abandoned) ((void (^)(BOOL))entry[@"ready"])(NO);
+}
+- (BOOL)canTypeText { return _connected && _typingEnabled; }
+- (void)typeText:(NSString *)text ready:(void (^)(BOOL ok))ready {
+    if (!self.canTypeText || !text.length) { ready(NO); return; }
+    if (!_typingQueue) _typingQueue = [NSMutableArray array];
+    [_typingQueue addObject:[@{@"text":text, @"ready":[ready copy], @"serial":@(++_serial)} mutableCopy]];
+    if (_typingQueue.count == 1) [self sendTyping];
+}
+- (void)sendTyping {
+    NSMutableDictionary *head = _typingQueue.firstObject;
+    if (!head) return;
+    head[@"sent"] = @(NSProcessInfo.processInfo.systemUptime);
+    [self send:@{@"type_text":head[@"text"], @"serial":head[@"serial"]}];
+}
+- (void)typed:(NSInteger)serial {
+    NSMutableDictionary *head = _typingQueue.firstObject;
+    if (!head || [head[@"serial"] integerValue] != serial) return;
+    [_typingQueue removeObjectAtIndex:0];
+    ((void (^)(BOOL))head[@"ready"])(YES);
+    // Give the focused guest app time to read the pasted text, then put the
+    // user's own clipboard back. A later chunk supersedes this restore.
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        CageDesktopClipboard *client = weakSelf;
+        if (client && client->_connected) [client send:@{@"restore_text":@(serial)}];
+    });
+    [self sendTyping];
 }
 - (void)setDesktopVisible:(BOOL)visible {
-    BOOL enabled = [NSUserDefaults.standardUserDefaults boolForKey:@"vmac.shareClipboardContent"];
+    BOOL enabled = clipboardSharingEnabled() || hostInputMethodEnabled();
     if (!visible || !enabled) {
         [_timer invalidate];
         _timer = nil;
         [self closeConnection];
         return;
     }
+    // Reconnect when clipboard sharing was switched while connected.
+    if (_connected && _subscribed != clipboardSharingEnabled()) [self closeConnection];
     if (_timer) return;
     _retryAfter = 0;
     __weak typeof(self) weakSelf = self;
@@ -157,13 +207,18 @@ static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
             return;
         }
         _connected = YES;
+        _filesEnabled = [hello[@"subscribe"] boolValue];
+        _typingEnabled = [hello[@"type_text"] boolValue];
         _hostRevision = board.changeCount;
-        [self send:@{@"subscribe":@YES}];
+        _subscribed = clipboardSharingEnabled();
+        if (_subscribed) [self send:@{@"subscribe":@YES}];
         return;
     }
+    NSNumber *typed = message[@"typed"];
+    if ([typed isKindOfClass:NSNumber.class]) { [self typed:typed.integerValue]; return; }
     NSNumber *ack = message[@"ack"];
     if ([ack isKindOfClass:NSNumber.class] && ack.integerValue == _pendingSerial) _pendingSerial = 0;
-    if (!_connected || _pendingSerial || _transferring || board.changeCount != _hostRevision) return;
+    if (!_connected || _pendingSerial || _transferring || board.changeCount != _hostRevision || !clipboardSharingEnabled()) return;
     if (message[@"files"]) {
         if ([message[@"files"] isKindOfClass:NSString.class]) [self receiveFiles:message[@"files"]];
         return;
@@ -229,6 +284,8 @@ static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
         if (now >= _retryAfter) [self connect];
         return;
     }
+    NSNumber *typingSent = _typingQueue.firstObject[@"sent"];
+    if (typingSent && now - typingSent.doubleValue > 3) { [self closeConnection]; return; }
     if (_transferring) return;
     if (!_connected || _pendingSerial) {
         if (now - _lastRequest > 12) [self closeConnection];
@@ -237,8 +294,9 @@ static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
     NSPasteboard *board = NSPasteboard.generalPasteboard;
     if (now - _lastCollect > 5) { _lastCollect = now; [self collectCaches]; }
     NSInteger revision = board.changeCount;
-    if (revision == _hostRevision) return;
+    if (revision == _hostRevision || !clipboardSharingEnabled()) return;
     NSArray<NSURL *> *files = hostClipboardFiles(board);
+    if (files && !_filesEnabled) { _hostRevision = revision; return; }
     if (files) {
         // Stage Mac files only once VMac is in front, so unrelated Finder
         // copies in other apps are not uploaded to the guest.
