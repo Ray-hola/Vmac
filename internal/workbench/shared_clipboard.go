@@ -18,10 +18,11 @@ import (
 	"time"
 
 	"al.essio.dev/pkg/shellescape"
-	"github.com/google/uuid"
 	"github.com/Ray-hola/Vmac/internal/cage"
 	"github.com/Ray-hola/Vmac/internal/clipboardfiles"
 	"github.com/Ray-hola/Vmac/internal/guestos"
+	"github.com/Ray-hola/Vmac/internal/version"
+	"github.com/google/uuid"
 )
 
 const clipboardWireLimit = 30 << 20
@@ -46,15 +47,16 @@ func compressedClipboardCommand(script string) (string, error) {
 }
 
 type clipboardPayload struct {
-	Hello   *clipboardHello `json:"hello,omitempty"`
-	Text    *string         `json:"text,omitempty"`
-	PNG     string          `json:"png,omitempty"`
-	Files   json.RawMessage `json:"files,omitempty"`
-	Error   string          `json:"error,omitempty"`
-	Source  string          `json:"source,omitempty"`
-	Serial  int             `json:"serial,omitempty"`
-	Ack     int             `json:"ack,omitempty"`
-	Release []string        `json:"release,omitempty"`
+	Hello     *clipboardHello `json:"hello,omitempty"`
+	Text      *string         `json:"text,omitempty"`
+	PNG       string          `json:"png,omitempty"`
+	Files     json.RawMessage `json:"files,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	Source    string          `json:"source,omitempty"`
+	Serial    int             `json:"serial,omitempty"`
+	Ack       int             `json:"ack,omitempty"`
+	Release   []string        `json:"release,omitempty"`
+	Subscribe bool            `json:"subscribe,omitempty"`
 }
 
 type clipboardHello struct {
@@ -89,7 +91,7 @@ func (s *Server) clipboardCommand(ctx context.Context, operation string, selecti
 		return cmd, "guest", err
 	}
 	if s.macosGuest != nil {
-		if operation != "stream" && operation != "import" && operation != "export" && operation != "upload" && operation != "request" {
+		if operation != "stream" && operation != "stream-content" && operation != "import" && operation != "export" && operation != "upload" && operation != "request" {
 			return nil, "", errors.New("剪贴板操作无效")
 		}
 		if operation == "export" && selection.User != "guest" {
@@ -248,6 +250,10 @@ func (s *Server) clipboardFileSelection(id string) clipboardFileSelection {
 }
 
 func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
+	contentOnly := version.MacOSGuestOnly && s.macosGuest != nil
+	if contentOnly && !s.nativeMacOSTransferReady(w, r) {
+		return
+	}
 	s.mu.Lock()
 	available := s.ready && !s.closing && s.clipboardCancel == nil
 	ctx, cancel := context.WithCancel(r.Context())
@@ -262,7 +268,11 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { cancel(); s.mu.Lock(); s.clipboardCancel = nil; s.clipboardRelease = nil; s.mu.Unlock() }()
 	// 以当前后端配套的辅助脚本启动连接，保留 stdin/stdout 传输剪贴板数据。
-	cmd, source, err := s.clipboardCommand(ctx, "stream", clipboardFileSelection{})
+	operation := "stream"
+	if contentOnly {
+		operation = "stream-content"
+	}
+	cmd, source, err := s.clipboardCommand(ctx, operation, clipboardFileSelection{})
 	if err != nil {
 		http.Error(w, "剪贴板客机配置无效", 502)
 		return
@@ -308,6 +318,9 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 		for scanner.Scan() {
 			var payload clipboardPayload
 			if json.Unmarshal(scanner.Bytes(), &payload) != nil {
+				return
+			}
+			if contentOnly && payload.Files != nil {
 				return
 			}
 			if payload.Hello != nil {
@@ -369,6 +382,13 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 		}
 		if payload.Release != nil {
 			return
+		}
+		if contentOnly {
+			value := nativeClipboardValue{Text: payload.Text, PNG: payload.PNG}
+			if payload.Files != nil || (payload.Subscribe && (value.Text != nil || value.PNG != "")) ||
+				(!payload.Subscribe && !value.valid()) {
+				return
+			}
 		}
 		if payload.Files != nil {
 			var id string

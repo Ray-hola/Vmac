@@ -120,6 +120,9 @@ func (s *Server) macOSNativeClipboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "无法连接客机剪贴板", http.StatusBadGateway)
 		return
 	}
+	if input.Operation == "read" {
+		input.Operation = "read-content"
+	}
 	data, _ := json.Marshal(input)
 	cmd.Stdin = bytes.NewReader(append(data, '\n'))
 	out, err := cmd.StdoutPipe()

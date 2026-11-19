@@ -32,7 +32,7 @@ func TestMacOSNativeTransferRequiresTrustedLocalView(t *testing.T) {
 	s := testServer(t)
 	s.macosGuest = &guestos.MacOSProfile{Instance: "mac", User: "guestdev"}
 	handler := s.handler()
-	for _, path := range []string{"/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard"} {
+	for _, path := range []string{"/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard", "/api/macos/input-sources"} {
 		r := httptest.NewRequest("POST", s.origin+path, nil)
 		r.AddCookie(&http.Cookie{Name: s.cookieName(), Value: s.session})
 		w := httptest.NewRecorder()
@@ -40,5 +40,11 @@ func TestMacOSNativeTransferRequiresTrustedLocalView(t *testing.T) {
 		if w.Code != http.StatusForbidden && w.Code != http.StatusNotFound {
 			t.Errorf("%s admitted untrusted request, status %d", path, w.Code)
 		}
+	}
+}
+
+func TestMacOSInputSourcesRouteIsAvailableInWorkbench(t *testing.T) {
+	if !macOSWorkbenchRoute("/api/macos/input-sources") {
+		t.Fatal("the macOS workbench must admit the input sources route")
 	}
 }

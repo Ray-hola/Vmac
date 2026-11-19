@@ -144,8 +144,12 @@ private func png(_ image: CGImage) throws -> Data {
     return data as Data
 }
 
-private func boardContent(_ board: NSPasteboard) throws -> [String: Any] {
+private func boardContent(_ board: NSPasteboard, contentOnly: Bool = false) throws -> [String: Any] {
+    if (board.types ?? []).contains(where: {
+        ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType"].contains($0.rawValue)
+    }) { return [:] }
     if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+        if contentOnly { return [:] }
         guard urls.allSatisfy({ $0.isFileURL && ($0.host == nil || $0.host == "" || $0.host == "localhost") }) else { throw ClipboardFailure("invalid_files") }
         return ["files": try paths(urls.map(\.path))]
     }
@@ -154,7 +158,9 @@ private func boardContent(_ board: NSPasteboard) throws -> [String: Any] {
         return ["png": value.base64EncodedString()]
     }
     if let value = board.data(forType: .tiff) { return ["png": try png(image(value)).base64EncodedString()] }
-    let value = board.string(forType: .string) ?? ""
+    let string = board.string(forType: .string)
+    if string == nil && contentOnly { return [:] }
+    let value = string ?? ""
     guard value.utf8.count <= textLimit else { throw ClipboardFailure("text_too_large") }
     return ["text": value]
 }
@@ -180,13 +186,14 @@ private func setBoard(_ board: NSPasteboard, _ value: [String: Any]) throws {
 private final class Stream: @unchecked Sendable {
     private struct Snapshot { let data: Data; let completed: (Bool) -> Void }
     let fd: Int32
+    let contentOnly: Bool
     private let outputLock = NSLock()
     private let stateLock = NSLock()
     private var closed = false
     private var publishing = false
     private var pending: Snapshot?
     var initialized = false // GUI-thread owned
-    init(_ fd: Int32) { self.fd = fd }
+    init(_ fd: Int32, contentOnly: Bool) { self.fd = fd; self.contentOnly = contentOnly }
     func send(_ value: [String: Any]) throws {
         try sendData(jsonData(value))
     }
@@ -386,10 +393,11 @@ private final class ClipboardAgent: @unchecked Sendable {
         catch { onGUI { retireCopies(result) }; throw error }
         return result
     }
-    private func snapshot() throws -> [String: Any] {
+    private func snapshot(contentOnly: Bool = false) throws -> [String: Any] {
         let (epoch, captured, content) = try onGUI { () -> (String, Int, [String: Any]) in
-            try check(); return (session, board.changeCount, try boardContent(board))
+            try check(); return (session, board.changeCount, try boardContent(board, contentOnly: contentOnly))
         }
+        if content.isEmpty { return [:] }
         var result = content
         if let selected = content["files"] as? [String] {
             onGUI { record(selected) }
@@ -448,15 +456,16 @@ private final class ClipboardAgent: @unchecked Sendable {
         revision = board.changeCount
         snapshotPending = true
         let capturedSession = session
+        let contentOnly = streams.values.filter { $0.initialized }.allSatisfy(\.contentOnly)
         DispatchQueue.global(qos: .userInitiated).async {
             let result: [String: Any]
-            do { result = try self.snapshot() }
+            do { result = try self.snapshot(contentOnly: contentOnly) }
             catch { result = (error as? ClipboardFailure)?.reason == "superseded" ? [:] : ["error": (error as? ClipboardFailure)?.reason ?? "clipboard_read_failed"] }
             onGUI {
                 self.snapshotPending = false
                 guard !result.isEmpty else { return }
                 let files = result["files"] as? [String] ?? []
-                let recipients = self.streams.values.filter { $0.initialized }
+                let recipients = self.streams.values.filter { $0.initialized && (!$0.contentOnly || files.isEmpty) }
                 guard self.session == capturedSession, !recipients.isEmpty else { self.retireCopies(files); return }
                 let delivery = SnapshotDelivery(recipients.count)
                 for stream in recipients {
@@ -497,20 +506,32 @@ private final class ClipboardAgent: @unchecked Sendable {
                 try writeAll(fd, jsonData(value))
             case "copy-read":
                 try writeAll(fd, jsonData(copiedText(request)))
-            case "stream":
-                let connection = Stream(fd)
+            case "stream", "stream-content":
+                let connection = Stream(fd, contentOnly: operation == "stream-content")
                 stream = connection
                 onGUI { streams[fd] = connection }
                 try connection.send(onGUI { hello() })
                 while let line = try reader.line() {
                     do {
-                        let reply = try apply(json(line), echo: false)
-                        onGUI { connection.initialized = true }
-                        try connection.send(reply)
+                        let value = try json(line)
+                        if connection.contentOnly && value["subscribe"] as? Bool == true {
+                            try onGUI {
+                                try check()
+                                if !streams.values.contains(where: { $0.initialized }) { revision = board.changeCount }
+                                connection.initialized = true
+                            }
+                        } else {
+                            if connection.contentOnly && (value["files"] != nil || value["release"] != nil) {
+                                throw ClipboardFailure("invalid_files")
+                            }
+                            let reply = try apply(value, echo: false)
+                            onGUI { connection.initialized = true }
+                            try connection.send(reply)
+                        }
                     } catch { try connection.send(["error": (error as? ClipboardFailure)?.reason ?? "clipboard_write_failed"]) }
                 }
-            case "read":
-                let value = try snapshot()
+            case "read", "read-content":
+                let value = try snapshot(contentOnly: operation == "read-content")
                 do { try writeAll(fd, jsonData(value)) }
                 catch { if let files = value["files"] as? [String] { onGUI { retireCopies(files) } }; throw error }
             case "write":
@@ -614,8 +635,8 @@ private func client(_ operation: String) throws {
     let fd = try connect(); defer { close(fd) }
     let reader = Reader(fd)
     switch operation {
-    case "stream":
-        try writeAll(fd, jsonData(["operation": "stream"]))
+    case "stream", "stream-content":
+        try writeAll(fd, jsonData(["operation": operation]))
         DispatchQueue.global().async {
             do { try Reader(fd).copy(to: .standardOutput); exit(0) }
             catch { exit(1) }
@@ -653,7 +674,7 @@ private func client(_ operation: String) throws {
         }
         guard let line = try reader.line(), try json(line)["ok"] as? Bool == true else { throw ClipboardFailure("file_transfer_failed") }
     case "request":
-        guard let line = try Reader(STDIN_FILENO).line(), let action = try json(line)["operation"] as? String, ["read", "write", "prepare-files", "discard", "copy-prepare", "copy-read"].contains(action) else { throw ClipboardFailure("unknown_operation") }
+        guard let line = try Reader(STDIN_FILENO).line(), let action = try json(line)["operation"] as? String, ["read", "read-content", "write", "prepare-files", "discard", "copy-prepare", "copy-read"].contains(action) else { throw ClipboardFailure("unknown_operation") }
         try writeAll(fd, line + Data([10])); shutdown(fd, SHUT_WR)
         guard let reply = try reader.line() else { throw ClipboardFailure("clipboard_service_unavailable") }
         try writeAll(STDOUT_FILENO, reply + Data([10]))
@@ -711,6 +732,18 @@ private func testAgentTransport(_ board: NSPasteboard) throws {
             onGUI { board.clearContents(); board.setString(largeText, forType: .string) }
             let fresh = try rpc(["operation": "copy-read", "revision": prepared["revision"]!, "session": prepared["session"]!])
             guard fresh["text"] as? String == largeText, fresh["session"] as? String == prepared["session"] as? String else { throw ClipboardFailure("test_web_copy_failed") }
+            do {
+                let (fd, ended) = try connection()
+                defer { close(fd); ended.wait() }
+                let reader = Reader(fd)
+                try writeAll(fd, jsonData(["operation": "stream-content"]))
+                guard try reader.line() != nil else { throw ClipboardFailure("test_hello_failed") }
+                try writeAll(fd, jsonData(["subscribe": true]))
+                try writeAll(fd, jsonData(["files": ["/tmp/test-only.txt"]]))
+                guard let refused = try reader.line(), try json(refused)["error"] as? String == "invalid_files" else { throw ClipboardFailure("test_file_sync_accepted") }
+                onGUI { board.clearContents(); board.setString("content-only stream", forType: .string); agent.poll() }
+                guard let pushed = try reader.line(), try json(pushed)["text"] as? String == "content-only stream" else { throw ClipboardFailure("test_push_failed") }
+            }
             let (fd, ended) = try connection()
             defer { close(fd); ended.wait() }
             let reader = Reader(fd)
@@ -761,6 +794,14 @@ private func selfTest() throws {
     defer { board.releaseGlobally() }
     let text = "中文🙂\nexact text"
     try setBoard(board, ["text": text]); guard try boardContent(board)["text"] as? String == text else { throw ClipboardFailure("text_test_failed") }
+    let concealed = NSPasteboardItem()
+    concealed.setString(text, forType: .string)
+    concealed.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
+    board.clearContents()
+    guard board.writeObjects([concealed]), try boardContent(board, contentOnly: true).isEmpty else { throw ClipboardFailure("test_secret_sync_accepted") }
+    board.clearContents()
+    guard board.writeObjects([NSURL(fileURLWithPath: "/tmp/clipboard-selftest-file")]),
+          try boardContent(board, contentOnly: true).isEmpty else { throw ClipboardFailure("test_file_sync_accepted") }
     let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 11, pixelsHigh: 7, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
     let value = bitmap.representation(using: .png, properties: [:])!
     try setBoard(board, ["png": value.base64EncodedString()]); let actual = try boardContent(board)

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Check, Clock3, Copy, Eye, EyeOff, HardDrive, KeyRound, LoaderCircle, Minus, Monitor, Plus, X } from "lucide-react";
+import { Check, Clock3, Copy, Eye, EyeOff, HardDrive, Keyboard, KeyRound, LoaderCircle, Minus, Monitor, Plus, X } from "lucide-react";
 import { api, native } from "./api";
 import { StatusChip, gib } from "./vmac-ui";
 
@@ -15,6 +15,57 @@ async function waitForJob(accepted) {
 }
 
 const maxGiB = 2048;
+
+const inputSourceNames = {
+  "com.apple.inputmethod.SCIM.ITABC": "简体拼音",
+  "com.apple.inputmethod.TCIM.Zhuyin": "注音",
+  "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese": "日语（罗马字）",
+  "com.apple.inputmethod.Korean.2SetKorean": "韩语（两套式）",
+};
+
+export function GuestInputSources({ ready, onOpen }) {
+  const [sources, setSources] = useState(null);
+  const [error, setError] = useState("");
+  const [request, setRequest] = useState(false);
+  const [revision, refresh] = useState(0);
+
+  useEffect(() => {
+    if (!ready) return;
+    const controller = new AbortController();
+    api("/macos/input-sources", undefined, undefined, {}, { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) setSources(value); })
+      .catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
+    return () => controller.abort();
+  }, [ready, revision]);
+
+  async function openSettings() {
+    setRequest(true);
+    setError("");
+    try {
+      await api("/macos/input-sources", {});
+      await onOpen();
+    } catch (failure) { setError(failure.message); }
+    finally { setRequest(false); }
+  }
+
+  return <section className="vm-card" aria-label="客机输入法">
+    <div className="vm-card-head"><div className="vm-card-title">
+      <span className="vm-card-icon"><Keyboard size={17} aria-hidden="true" /></span>
+      <div><h2>客机输入法</h2><p>{ready ? "在客机键盘设置中添加或移除输入法。在客机桌面按 Control + 空格切换。" : "启动并登录 macOS 客机后即可管理输入法。"}</p></div>
+    </div></div>
+    {ready && <>
+      {sources && <dl className="vm-guest-details">
+        <div><dt>当前输入法</dt><dd>{sources.selected.map(id => inputSourceNames[id] || id).join("、") || "暂未读取到"}</dd></div>
+        <div><dt>已启用</dt><dd>{sources.enabled.map(id => inputSourceNames[id] || id).join("、") || "暂未读取到"}</dd></div>
+      </dl>}
+      <div className="vm-actions">
+        <button className="primary" type="button" disabled={request} onClick={openSettings}>打开客机键盘设置</button>
+        <button type="button" onClick={() => { setError(""); refresh(value => value + 1); }}>刷新</button>
+      </div>
+    </>}
+    {error && ready && <p className="vm-error" role="alert">{error}</p>}
+  </section>;
+}
 
 export function GuestLoginDetails({ installed, username, passwordPending }) {
   const [password, setPassword] = useState("");

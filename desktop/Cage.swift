@@ -267,6 +267,8 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         file.addItem(withTitle: "关闭窗口（保留环境）", action: #selector(closeWindow), keyEquivalent: "")
         if nativeVMWorkbench {
             file.addItem(.separator())
+            let clipboard = file.addItem(withTitle: "共享剪贴板（文字和图片）", action: #selector(toggleGuestClipboard(_:)), keyEquivalent: "")
+            clipboard.state = UserDefaults.standard.bool(forKey: "vmac.shareClipboardContent") ? .on : .off
             for (title, action) in [
                 ("上传文件到客机…", "upload"),
                 ("传文字或图片到客机", "clipboard-to-guest"),
@@ -379,6 +381,14 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             guestSidebar?.showNotice("请先打开客机桌面")
         }
         #endif
+    }
+
+    @objc private func toggleGuestClipboard(_ sender: NSMenuItem) {
+        let enabled = sender.state != .on
+        sender.state = enabled ? .on : .off
+        UserDefaults.standard.set(enabled, forKey: "vmac.shareClipboardContent")
+        publishWindowVisibility()
+        guestSidebar?.showNotice(enabled ? "客机桌面可见时，新复制的文字和图片会双向同步" : "剪贴板共享已关闭")
     }
 
     private func selectGuestDestination(_ destination: String) {
@@ -997,6 +1007,11 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private func publishWindowVisibility(forceHidden: Bool = false) {
         guard window != nil, webView != nil else { return }
         let visible = !forceHidden && window.isVisible && !window.isMiniaturized && window.occlusionState.contains(.visible)
+        #if CAGE_EMBEDDED_VM
+        if nativeVMWorkbench {
+            _ = (visible && guestDesktopVisible ? "clipboard-visible" : "clipboard-hidden").withCString { performEmbeddedUtility($0) }
+        }
+        #endif
         webView.evaluateJavaScript("window.cageWindowVisible = \(visible ? "true" : "false"); window.dispatchEvent(new Event('cage-window-visibility'));", completionHandler: nil)
     }
     func windowDidChangeOcclusionState(_ notification: Notification) { publishWindowVisibility() }

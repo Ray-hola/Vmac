@@ -8,7 +8,7 @@ import { networkState } from "./safety-state.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
 import { SpaceManagement } from "./space-management";
-import { DiskCapacity, GuestLoginDetails, GuestTimezone, VMProfiles } from "./vmac-management";
+import { DiskCapacity, GuestInputSources, GuestLoginDetails, GuestTimezone, VMProfiles } from "./vmac-management";
 import { ChecksPage, protectionText, protectionTone, useVMacProtection } from "./vmac-checks";
 import { GuestOverview, guestPhase } from "./vmac-overview";
 import { PageHeader, StatusChip } from "./vmac-ui";
@@ -21,6 +21,7 @@ const titles = {
   profiles: "虚拟机切换",
   login: "客机账户",
   timezone: "时区",
+  input: "输入法",
   proxy: "代理管理",
   checks: "环境检测",
 };
@@ -79,7 +80,7 @@ export function NativeGuestHome({ setup = null }) {
       setSection(value);
     } catch (failure) { setError(failure.message); }
   }
-  async function openDesktop(destination = "desktop") {
+  async function openDesktop(destination = "desktop", shouldLaunchClaude = true) {
     if (opened.current) return;
     opened.current = true;
     automatic.current = false;
@@ -89,7 +90,7 @@ export function NativeGuestHome({ setup = null }) {
       await native("showGuestDesktop", { destination });
       choosePage(destination);
       setSection("");
-      if (destination === "desktop" && launchClaude.current) {
+      if (destination === "desktop" && shouldLaunchClaude && launchClaude.current) {
         launchClaude.current = false;
         void api("/macos/claude/window", { action: "launch" }).catch(() => {});
       }
@@ -317,6 +318,7 @@ export function NativeGuestHome({ setup = null }) {
       : page === "login" ? <GuestLoginDetails installed={installed} username={account?.macos_guest_user} passwordPending={account?.macos_password_pending} />
       : page === "timezone" ? <GuestTimezone status={status} installed={installed} settingsOpen={Boolean(section)}
           onSettings={() => openSettings("region")} onRestart={() => lifecycleAction.current?.("restart")} />
+      : page === "input" ? <GuestInputSources ready={status.ready} onOpen={() => openDesktop("desktop", false)} />
       : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
           onConfirm={confirm} onSettings={openSettings} onInstall={setup && !installed ? () => navigate("desktop") : undefined} />
       : <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}

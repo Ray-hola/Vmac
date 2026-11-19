@@ -1,11 +1,35 @@
 // The AppKit window belongs to the process that owns VZVirtualMachine.
+#import "native_clipboard_darwin.h"
+
 @interface CageNativeVMWindow : NSObject
 @property(nonatomic, weak) NSWindow *window;
 @property(nonatomic, strong) NSView *pane;
 @property(nonatomic, strong) VZVirtualMachineView *view;
 @property(nonatomic) BOOL busy;
 @property(nonatomic) BOOL shuttingDown;
+@property(nonatomic, strong) CageDesktopClipboard *clipboard;
 - (void)bringForward;
+- (BOOL)acceptDrop:(id<NSDraggingInfo>)sender perform:(BOOL)perform;
+@end
+
+@interface CageDropVMView : VZVirtualMachineView
+@property(nonatomic, weak) CageNativeVMWindow *owner;
+@end
+
+@implementation CageDropVMView
+- (instancetype)initWithFrame:(NSRect)frame {
+    if ((self = [super initWithFrame:frame])) [self registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
+    return self;
+}
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+    return [self.owner acceptDrop:sender perform:NO] ? NSDragOperationCopy : NSDragOperationNone;
+}
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+    return [self draggingEntered:sender];
+}
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    return [self.owner acceptDrop:sender perform:YES];
+}
 @end
 
 @implementation CageNativeVMWindow
@@ -19,6 +43,8 @@
     self.pane.hidden = NO;
     [self.window makeKeyAndOrderFront:nil];
     [self.window makeFirstResponder:self.view];
+    if (!self.clipboard) self.clipboard = [[CageDesktopClipboard alloc] init];
+    [self.clipboard setDesktopVisible:YES];
 }
 - (void)showControls:(NSString *)reason {
     cageHideEmbeddedDesktop();
@@ -28,7 +54,7 @@
     [self showControls:@"settings"];
 }
 
-- (void)runAgent:(NSArray<NSString *> *)args input:(NSData *)input
+- (void)runAgent:(NSArray<NSString *> *)args input:(NSData *)input file:(NSFileHandle *)file
             done:(void (^)(NSDictionary *, NSString *))done {
     if (self.busy) return;
     self.busy = YES;
@@ -40,7 +66,7 @@
         task.arguments = args;
         NSPipe *output = NSPipe.pipe;
         NSPipe *pipe = input ? NSPipe.pipe : nil;
-        task.standardInput = pipe ?: NSFileHandle.fileHandleWithNullDevice;
+        task.standardInput = pipe ?: file ?: NSFileHandle.fileHandleWithNullDevice;
         task.standardOutput = output;
         task.standardError = NSFileHandle.fileHandleWithNullDevice;
         NSDictionary *reply = nil;
@@ -54,6 +80,7 @@
             id decoded = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
             if ([decoded isKindOfClass:NSDictionary.class]) reply = decoded;
         }
+        [file closeFile];
         NSDictionary *result = reply[@"data"];
         if (![result isKindOfClass:NSDictionary.class]) result = nil;
         NSString *failure = reply[@"error"][@"message"];
@@ -67,6 +94,10 @@
             if (self.window.isKeyWindow && !self.pane.hidden) [self.window makeFirstResponder:self.view];
         });
     });
+}
+- (void)runAgent:(NSArray<NSString *> *)args input:(NSData *)input
+            done:(void (^)(NSDictionary *, NSString *))done {
+    [self runAgent:args input:input file:nil done:done];
 }
 - (IBAction)recheck:(id)sender {
     [self runAgent:@[@"agent", @"call", @"network.check", @"--wait", @"90s"] input:nil
@@ -101,45 +132,57 @@
     panel.resolvesAliases = NO;
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
         if (response != NSModalResponseOK) return;
-        NSURL *url = panel.URL;
-        NSDictionary *info = [url resourceValuesForKeys:@[NSURLIsRegularFileKey, NSURLIsSymbolicLinkKey, NSURLFileSizeKey] error:NULL];
-        if (![info[NSURLIsRegularFileKey] boolValue] || [info[NSURLIsSymbolicLinkKey] boolValue] ||
-            [info[NSURLFileSizeKey] unsignedLongLongValue] > (1ULL << 30)) {
-            [self showNotice:@"请选择小于或等于 1 GB 的普通文件"];
-            return;
-        }
-        NSURLComponents *route = [[NSURLComponents alloc] init];
-        route.path = @"/api/macos/native-upload";
-        route.queryItems = @[[NSURLQueryItem queryItemWithName:@"name" value:url.lastPathComponent]];
-        [self runAgent:@[@"agent", @"request", @"POST", route.string, @"--content-type", @"application/octet-stream", @"--input", url.path]
-                  input:nil done:^(NSDictionary *value, NSString *failure) {
-            if (!failure) [self showNotice:@"已上传到客机 下载 / VMac Uploads"];
-        }];
+        [self uploadURLs:panel.URLs];
     }];
+}
+- (void)uploadHandles:(NSArray<NSFileHandle *> *)handles names:(NSArray<NSString *> *)names index:(NSUInteger)index {
+    NSURLComponents *route = [[NSURLComponents alloc] init];
+    route.path = @"/api/macos/native-upload";
+    route.queryItems = @[[NSURLQueryItem queryItemWithName:@"name" value:names[index]]];
+    [self runAgent:@[@"agent", @"request", @"POST", route.string, @"--content-type", @"application/octet-stream", @"--input", @"-"]
+              input:nil file:handles[index] done:^(NSDictionary *value, NSString *failure) {
+        if (failure) {
+            if (index) [self showNotice:[NSString stringWithFormat:@"已传输 %lu 个文件，后续停止：%@", (unsigned long)index, failure]];
+        } else if (index + 1 < handles.count) {
+            [self uploadHandles:handles names:names index:index + 1];
+        } else {
+            [self showNotice:[NSString stringWithFormat:@"已上传 %lu 个文件到客机 下载 / VMac Uploads", (unsigned long)handles.count]];
+        }
+    }];
+}
+- (BOOL)uploadURLs:(NSArray<NSURL *> *)urls {
+    if (self.busy || urls.count == 0 || urls.count > 20) return NO;
+    NSMutableArray<NSFileHandle *> *handles = [NSMutableArray arrayWithCapacity:urls.count];
+    NSMutableArray<NSString *> *names = [NSMutableArray arrayWithCapacity:urls.count];
+    for (NSURL *url in urls) {
+        if (!url.isFileURL || (url.host.length && ![url.host isEqualToString:@"localhost"])) return NO;
+        int fd = open(url.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+        struct stat status;
+        if (fd < 0 || fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_size > (1LL << 30)) {
+            if (fd >= 0) close(fd);
+            [self showNotice:@"请选择小于或等于 1 GB 的普通文件"];
+            return NO;
+        }
+        [handles addObject:[[NSFileHandle alloc] initWithFileDescriptor:fd closeOnDealloc:YES]];
+        [names addObject:url.lastPathComponent];
+    }
+    [self uploadHandles:handles names:names index:0];
+    return YES;
+}
+- (BOOL)acceptDrop:(id<NSDraggingInfo>)sender perform:(BOOL)perform {
+    if (self.busy || self.pane.hidden || !self.view.virtualMachine || self.window.attachedSheet ||
+        !(sender.draggingSourceOperationMask & NSDragOperationCopy)) return NO;
+    NSPasteboard *board = sender.draggingPasteboard;
+    NSDictionary *options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};
+    if (!perform) return [board canReadObjectForClasses:@[NSURL.class] options:options];
+    NSArray<NSURL *> *urls = [board readObjectsForClasses:@[NSURL.class] options:options];
+    return [self uploadURLs:urls];
 }
 - (IBAction)clipboardToGuest:(id)sender {
     if (self.busy) return;
-    NSPasteboard *board = NSPasteboard.generalPasteboard;
-    if ([board canReadObjectForClasses:@[NSURL.class] options:@{NSPasteboardURLReadingFileURLsOnlyKey:@YES}]) {
-        [self showNotice:@"剪贴板里的文件请通过「上传文件」传输"];
-        return;
-    }
-    NSString *text = [board stringForType:NSPasteboardTypeString];
-    NSData *png = [board dataForType:NSPasteboardTypePNG];
-    if (!png) {
-        NSData *tiff = [board dataForType:NSPasteboardTypeTIFF];
-        if (tiff.length <= (24 << 20) && tiff.length) {
-            NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithData:tiff];
-            if (bitmap.pixelsWide > 0 && bitmap.pixelsHigh > 0 &&
-                (double)bitmap.pixelsWide * bitmap.pixelsHigh <= 16000000) {
-                png = [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
-            }
-        }
-    }
-    NSDictionary *value;
-    if (png.length && png.length <= (9 << 20)) value = @{@"operation":@"write", @"png":[png base64EncodedStringWithOptions:0]};
-    else if (text && [text lengthOfBytesUsingEncoding:NSUTF8StringEncoding] <= (2 << 20)) value = @{@"operation":@"write", @"text":text};
+    NSMutableDictionary *value = [transferableClipboard(NSPasteboard.generalPasteboard, NO) mutableCopy];
     if (!value) { [self showNotice:@"请选择剪贴板中的文字或图片"]; return; }
+    value[@"operation"] = @"write";
     NSData *data = [NSJSONSerialization dataWithJSONObject:value options:0 error:NULL];
     [self runAgent:@[@"agent", @"request", @"POST", @"/api/macos/native-clipboard", @"--input", @"-"] input:data
             done:^(NSDictionary *result, NSString *failure) {

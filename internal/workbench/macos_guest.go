@@ -36,6 +36,8 @@ func macOSWorkbenchRoute(path string) bool {
 	switch path {
 	case "/api/macos/disk", "/api/macos/space/scan", "/api/macos/space/clean", "/api/environment/macos-screen-sharing", "/api/macos/first-setup", "/api/appearance/codex", "/api/macos/project-approval", "/api/macos/exit-policy", "/api/macos/login", "/api/macos/maintenance", "/api/macos/restart", "/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard":
 		return true
+	case "/api/macos/input-sources":
+		return true
 	}
 	return strings.HasPrefix(path, "/api/macos/claude/") || strings.HasPrefix(path, "/api/macos-browser/")
 }
@@ -220,6 +222,9 @@ func (s *Server) attachMacOSGuestForBoot(syncComponents bool) error {
 	defer cancel()
 	if err == nil {
 		err = s.syncNativeBrowserProfile(ctx)
+	}
+	if err == nil && syncComponents && !setupPending {
+		s.configureMacOSChromeProfile(s.operationContext())
 	}
 	s.mu.Lock()
 	if err != nil {
