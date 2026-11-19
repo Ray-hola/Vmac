@@ -89,17 +89,19 @@ func StartEmbeddedVMHost(config string) (map[string]string, error) {
 	if !filepath.IsAbs(config) {
 		return nil, errors.New("客机配置路径必须是绝对路径")
 	}
-	dir, err := os.MkdirTemp("/tmp", "cage-embedded-")
+	listener, socket, token, err := listenStableEmbeddedHost(config)
 	if err != nil {
-		return nil, err
+		dir, err := os.MkdirTemp("/tmp", "cage-embedded-")
+		if err != nil {
+			return nil, err
+		}
+		socket = filepath.Join(dir, "host.sock")
+		if listener, err = net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"}); err != nil {
+			os.Remove(dir)
+			return nil, err
+		}
+		token = hex.EncodeToString(randBytes())
 	}
-	socket := filepath.Join(dir, "host.sock")
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
-	if err != nil {
-		os.Remove(dir)
-		return nil, err
-	}
-	token := hex.EncodeToString(randBytes())
 	os.Setenv(cage.ConfigEnv, config)
 	env := map[string]string{embeddedSocketEnv: socket, embeddedTokenEnv: token}
 	slot := make(chan struct{}, 1)
@@ -120,6 +122,63 @@ func StartEmbeddedVMHost(config string) (map[string]string, error) {
 		}
 	}()
 	return env, nil
+}
+
+// A controller or hostagent outlives the window that started it and keeps the
+// socket and token from its environment. Each guest profile therefore listens
+// at the same private path with a persisted token, so a reopened window is
+// reachable through that existing environment.
+func listenStableEmbeddedHost(config string) (*net.UnixListener, string, string, error) {
+	dir := filepath.Dir(config)
+	socket := filepath.Join(dir, "embedded-host.sock")
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() || info.Mode().Perm()&0o077 != 0 || len(socket) >= 100 {
+		return nil, "", "", errors.New("no private profile directory for the embedded host")
+	}
+	if conn, err := net.DialTimeout("unix", socket, 300*time.Millisecond); err == nil {
+		conn.Close()
+		return nil, "", "", errors.New("another VMac window serves this guest")
+	}
+	token, err := embeddedHostToken(filepath.Join(dir, "embedded-host-token"))
+	if err != nil {
+		return nil, "", "", err
+	}
+	if info, err := os.Lstat(socket); err == nil && info.Mode()&os.ModeSocket != 0 {
+		_ = os.Remove(socket)
+	}
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	if err != nil {
+		return nil, "", "", err
+	}
+	listener.SetUnlinkOnClose(false)
+	return listener, socket, token, nil
+}
+
+func embeddedHostToken(path string) (string, error) {
+	if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o077 == 0 {
+		if data, err := os.ReadFile(path); err == nil {
+			if token := strings.TrimSpace(string(data)); len(token) == 64 {
+				if _, err := hex.DecodeString(token); err == nil {
+					return token, nil
+				}
+			}
+		}
+	}
+	token := hex.EncodeToString(randBytes())
+	temp, err := os.CreateTemp(filepath.Dir(path), ".embedded-host-token-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(temp.Name())
+	if _, err = temp.WriteString(token + "\n"); err == nil {
+		err = temp.Chmod(0o600)
+	}
+	if closeErr := temp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(temp.Name(), path)
+	}
+	return token, err
 }
 
 func randBytes() []byte {
