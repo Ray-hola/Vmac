@@ -33,6 +33,23 @@ static BOOL plainASCII(NSString *text) {
     NSMutableArray<NSEvent *> *_deferred;
     NSUInteger _typing;
     NSTextInputContext *_textInput;
+    NSPoint _caret;
+    BOOL _caretKnown;
+}
+// The guest's caret is invisible to the Mac; the last click in the guest is
+// the best estimate of where text goes, so the composition follows it.
+- (void)mouseDown:(NSEvent *)event {
+    _caret = [self convertPoint:event.locationInWindow fromView:nil];
+    _caretKnown = YES;
+    [super mouseDown:event];
+}
+- (NSRect)compositionFrame:(NSSize)size {
+    NSPoint anchor = _caretKnown ? _caret : NSMakePoint(24, 24 + size.height + 8);
+    NSRect frame = NSMakeRect(anchor.x, anchor.y - size.height - 8, size.width, size.height);
+    frame.origin.x = MAX(8, MIN(NSMaxX(self.bounds) - size.width - 8, NSMinX(frame)));
+    // Show it above the click when there is no room below.
+    if (NSMinY(frame) < 8) frame.origin.y = MIN(NSMaxY(self.bounds) - size.height - 8, anchor.y + 16);
+    return frame;
 }
 // The guest view has no text of its own; supply a context for the Mac's
 // input method even if the framework view does not create one.
@@ -119,7 +136,7 @@ static BOOL plainASCII(NSString *text) {
     }
     _compose.stringValue = text;
     NSSize size = _compose.intrinsicContentSize;
-    _compose.frame = NSMakeRect(24, 24, MIN(size.width + 20, NSWidth(self.bounds) - 48), size.height + 8);
+    _compose.frame = [self compositionFrame:NSMakeSize(MIN(size.width + 20, NSWidth(self.bounds) - 16), size.height + 8)];
     _compose.hidden = NO;
 }
 - (void)clearComposition {
@@ -147,10 +164,14 @@ static BOOL plainASCII(NSString *text) {
             return [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:flags timestamp:now windowNumber:window
                                      context:nil characters:characters charactersIgnoringModifiers:characters isARepeat:NO keyCode:code];
         };
-    [super flagsChanged:key(NSEventTypeFlagsChanged, NSEventModifierFlagCommand, 55, @"")];
-    [super keyDown:key(NSEventTypeKeyDown, NSEventModifierFlagCommand, 9, @"v")];
-    [super keyUp:key(NSEventTypeKeyUp, NSEventModifierFlagCommand, 9, @"v")];
-    [super flagsChanged:key(NSEventTypeFlagsChanged, 0, 55, @"")];
+    // The guest view decides whether a modifier went down from the
+    // device-dependent bit of that key (NX_DEVICELCMDKEYMASK for the left
+    // Command key), not from the device-independent Command flag alone.
+    const NSEventModifierFlags idle = 0x100, command = NSEventModifierFlagCommand | 0x100 | 0x8;
+    [super flagsChanged:key(NSEventTypeFlagsChanged, command, 55, @"")];
+    [super keyDown:key(NSEventTypeKeyDown, command, 9, @"v")];
+    [super keyUp:key(NSEventTypeKeyUp, command, 9, @"v")];
+    [super flagsChanged:key(NSEventTypeFlagsChanged, idle, 55, @"")];
 }
 
 #pragma mark NSTextInputClient
@@ -185,7 +206,7 @@ static BOOL plainASCII(NSString *text) {
 - (NSUInteger)characterIndexForPoint:(NSPoint)point { return NSNotFound; }
 - (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
     // The guest caret is not visible to the Mac; candidates follow the overlay.
-    NSRect local = _compose && !_compose.hidden ? _compose.frame : NSMakeRect(24, 24, 1, 22);
+    NSRect local = _compose && !_compose.hidden ? _compose.frame : [self compositionFrame:NSMakeSize(1, 22)];
     return self.window ? [self.window convertRectToScreen:[self convertRect:local toView:nil]] : NSZeroRect;
 }
 @end
