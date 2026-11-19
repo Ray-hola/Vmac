@@ -41,7 +41,6 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private var guestContent: NSView!
     private var guestSplitView: NSSplitView?
     private var preferredSidebarWidth: CGFloat = 176
-    private var guestDestination = "desktop"
     private var accountDeviceBusy = false
     private var expectedPort = 0
     private var allowQuit = false
@@ -384,10 +383,6 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
 
     private func selectGuestDestination(_ destination: String) {
         if destination == "settings" { settings(); return }
-        if destination != "start" && destination != "restart" {
-            guestDestination = destination
-            guestSidebar?.select(destination)
-        }
         showGuestControls()
         let quoted = String(data: try! JSONSerialization.data(withJSONObject: [destination]), encoding: .utf8)!
         webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('cage-guest-navigate', {detail: \(quoted)[0]}));", completionHandler: nil)
@@ -419,7 +414,6 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         }
         showGuestControls()
         if reason == "restarting" || reason == "stopped" {
-            guestDestination = "lifecycle"
             guestSidebar?.select("lifecycle")
         }
         CageDiagnostics.record("Embedded guest view returned to controls (\(reason)) in window \(window.windowNumber)")
@@ -697,8 +691,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             }
         case "showGuestDesktop":
             guard nativeVMWorkbench else { replyHandler(nil, "此版本不支持原生客机工作台"); return }
-            guestDestination = "desktop"
-            guestSidebar?.select(guestDestination)
+            guestSidebar?.select("desktop")
             guestDesktopCommand(replyHandler)
         case "vmacProfiles":
             guard nativeVMWorkbench else { replyHandler(nil, "需要 VMac 本机工作台"); return }
@@ -730,10 +723,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             }
         case "guestNavigationStatus":
             guard nativeVMWorkbench else { replyHandler(nil, "此版本不支持原生客机工作台"); return }
-            if let destination = body["destination"] as? String,
-               ["desktop", "lifecycle", "space", "proxy", "checks"].contains(destination) {
-                guestSidebar?.select(destination == "lifecycle" ? "desktop" : destination)
-            }
+            if let destination = body["destination"] as? String { guestSidebar?.select(destination) }
             guestSidebar?.update(running: body["running"] as? Bool ?? false,
                 ready: body["ready"] as? Bool ?? false, busy: body["busy"] as? Bool ?? false,
                 networkLabel: body["network"] as? String ?? "", failed: body["failed"] as? Bool ?? false,

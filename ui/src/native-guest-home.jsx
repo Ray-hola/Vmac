@@ -11,18 +11,21 @@ import { SpaceManagement } from "./space-management";
 import { DiskCapacity, GuestLoginDetails, GuestTimezone, VMProfiles } from "./vmac-management";
 import { ChecksPage, protectionText, protectionTone, useVMacProtection } from "./vmac-checks";
 import { GuestOverview, guestPhase } from "./vmac-overview";
-import { PageHeader, Segmented, StatusChip } from "./vmac-ui";
+import { PageHeader, StatusChip } from "./vmac-ui";
 import "./native-guest-home.css";
 
 const titles = {
   lifecycle: "客机桌面",
   desktop: "客机桌面",
-  space: "虚拟机管理",
+  space: "存储空间",
+  profiles: "虚拟机切换",
+  login: "客机账户",
+  timezone: "时区",
   proxy: "代理管理",
   checks: "环境检测",
 };
 const subtitles = {
-  space: "管理磁盘、虚拟机、客机账户和时区。",
+  space: "调整磁盘容量和清理 macOS 客机。",
   proxy: "选择出口节点、管理订阅，所有客机共用这套代理。",
   checks: "核对隔离报告、网关保护和 Claude 站点连通。",
 };
@@ -35,7 +38,6 @@ export function NativeGuestHome({ setup = null }) {
   useEffect(() => { document.documentElement.classList.add("vmac-theme"); }, []);
   const [status, setStatus] = useState(null);
   const [page, setPage] = useState("lifecycle");
-  const [vmTab, setVMTab] = useState("space");
   const [checksTab, setChecksTab] = useState("isolation");
   const [settings, setSettings] = useState(null);
   const [section, setSection] = useState("");
@@ -95,7 +97,7 @@ export function NativeGuestHome({ setup = null }) {
     finally { opened.current = false; setRequest(false); }
   }
   async function navigate(destination, checksSection) {
-    if (!(destination in titles) || opened.current) return;
+    if (!Object.hasOwn(titles, destination) || opened.current) return;
     if (proxyDirty.current && destination !== "proxy") {
       if (!await confirm({ title: "离开代理管理？", body: "代理更改尚未应用。", confirm: "离开页面" })) {
         await publishNavigation(latest.current);
@@ -306,21 +308,16 @@ export function NativeGuestHome({ setup = null }) {
         onStart={() => lifecycleAction.current?.("start")} onRestart={() => lifecycleAction.current?.("restart")}
         onStop={stop} onOpen={() => openDesktop()} onNavigate={navigate} /> :
       page === "space" ? <>
-        <Segmented label="虚拟机管理" value={vmTab} onChange={setVMTab}
-          items={[["space", "存储空间"], ["profiles", "虚拟机"], ["login", "客机账户"], ["timezone", "时区"]]} />
-        <div className="vm-tabpanel" key={vmTab}>
-          {vmTab === "space" ? <>
-            {installed ? <DiskCapacity status={status} onConfirm={confirm} onChanged={() => { setDisk(null); void pollNow.current?.(); }} /> : <section className="vm-card vm-empty" aria-label="虚拟磁盘">
-              <h2>还没有安装 macOS</h2><p>完成安装后，这里会显示磁盘容量、扩容和缓存清理。</p>
-              <button className="primary" onClick={() => navigate("desktop")}>打开安装向导</button>
-            </section>}
-            {installed && <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} onStart={() => lifecycleAction.current?.("start")} running={status.vm_running} />}
-          </> : vmTab === "profiles" ? <VMProfiles status={status} onConfirm={confirm} /> :
-            vmTab === "login" ? <GuestLoginDetails installed={installed} username={account?.macos_guest_user} passwordPending={account?.macos_password_pending} /> :
-              <GuestTimezone status={status} installed={installed} settingsOpen={Boolean(section)}
-                onSettings={() => openSettings("region")} onRestart={() => lifecycleAction.current?.("restart")} />}
-        </div>
-      </> : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
+        {installed ? <DiskCapacity status={status} onConfirm={confirm} onChanged={() => { setDisk(null); void pollNow.current?.(); }} /> : <section className="vm-card vm-empty" aria-label="虚拟磁盘">
+          <h2>还没有安装 macOS</h2><p>完成安装后，这里会显示磁盘容量、扩容和缓存清理。</p>
+          <button className="primary" onClick={() => navigate("desktop")}>打开安装向导</button>
+        </section>}
+        {installed && <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} onStart={() => lifecycleAction.current?.("start")} running={status.vm_running} />}
+      </> : page === "profiles" ? <VMProfiles status={status} onConfirm={confirm} />
+      : page === "login" ? <GuestLoginDetails installed={installed} username={account?.macos_guest_user} passwordPending={account?.macos_password_pending} />
+      : page === "timezone" ? <GuestTimezone status={status} installed={installed} settingsOpen={Boolean(section)}
+          onSettings={() => openSettings("region")} onRestart={() => lifecycleAction.current?.("restart")} />
+      : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
           onConfirm={confirm} onSettings={openSettings} onInstall={setup && !installed ? () => navigate("desktop") : undefined} />
       : <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}
           onApplied={() => pollNow.current?.()} onChecks={() => navigate("checks", "gateway")} protection={protection} />}
