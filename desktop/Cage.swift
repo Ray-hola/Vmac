@@ -40,6 +40,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private var guestSidebar: CageGuestSidebar?
     private var guestContent: NSView!
     private var guestSplitView: NSSplitView?
+    private var vmacToolbar: VMacToolbarController?
     private var preferredSidebarWidth: CGFloat = 176
     private var accountDeviceBusy = false
     private var expectedPort = 0
@@ -110,6 +111,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         window.minSize = NSSize(width: 820, height: 580)
         window.isReleasedWhenClosed = false
         window.delegate = self
+        if nativeVMWorkbench { installVMacToolbar() }
         window.setFrameAutosaveName("CageMainWindow")
         window.center()
         let config = WKWebViewConfiguration()
@@ -404,6 +406,25 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         guestSidebar?.showNotice(enabled ? "在客机里打字时使用 Mac 当前的输入法；客机请切换到英文（ABC）输入" : "已改用客机自己的输入法")
     }
 
+    private func installVMacToolbar() {
+        let toolbar = VMacToolbarController()
+        toolbar.onToggleControlCenter = { [weak self] in self?.toggleControlCenter() }
+        toolbar.onShowOverview = { [weak self] in self?.selectGuestDestination("lifecycle") }
+        #if CAGE_EMBEDDED_VM
+        toolbar.onUpload = { _ = "upload".withCString { performEmbeddedUtility($0) } }
+        #endif
+        toolbar.onFullScreen = { [weak self] in self?.window.toggleFullScreen(nil) }
+        // Restart and stop are confirmed by the workbench page, like its own buttons.
+        toolbar.onRestart = { [weak self] in self?.selectGuestDestination("restart") }
+        toolbar.onStop = { [weak self] in self?.selectGuestDestination("stop") }
+        toolbar.update(VMacStatus(name: activeProfileName(), tone: "idle", detail: "正在读取"))
+        toolbar.install(in: window)
+        vmacToolbar = toolbar
+    }
+    /// The toolbar switch: from the guest desktop to the control center and back.
+    private func toggleControlCenter() {
+        if guestDesktopVisible { showGuestControls() } else { guestDesktopCommand { _, _ in } }
+    }
     private func selectGuestDestination(_ destination: String) {
         if destination == "settings" { settings(); return }
         showGuestControls()
@@ -751,6 +772,9 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
                 ready: body["ready"] as? Bool ?? false, busy: body["busy"] as? Bool ?? false,
                 networkLabel: body["network"] as? String ?? "", failed: body["failed"] as? Bool ?? false,
                 setup: body["setup"] as? Bool ?? false, activity: body["activity"] as? String ?? "")
+            vmacToolbar?.update(VMacStatus(name: activeProfileName(), tone: body["tone"] as? String ?? "idle",
+                                           detail: body["detail"] as? String ?? ""))
+            vmacToolbar?.setGuestActionsEnabled((body["running"] as? Bool ?? false) && (body["ready"] as? Bool ?? false))
             replyHandler(true, nil)
         case "guestTrafficStatus":
             guard nativeVMWorkbench else { replyHandler(nil, "此版本不支持原生客机工作台"); return }

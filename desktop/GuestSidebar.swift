@@ -529,7 +529,7 @@ private final class SidebarTelemetry: NSView {
     }
 }
 
-private func activeProfileName() -> String {
+func activeProfileName() -> String {
     let id = CageProfile.activeProfile
     // The default guest is listed as "原有 macOS 客机"; the short form fits the sidebar card.
     if id == CageProfile.defaultProfile { return "macOS 客机" }

@@ -5,6 +5,7 @@ import { useAccount } from "./account";
 import { requestMacOSRecovery } from "./macos-recovery";
 import { Modal } from "./modal";
 import { networkState } from "./safety-state.mjs";
+import { shellStatus } from "./vmac-shell.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
 import { SpaceManagement } from "./space-management";
@@ -61,6 +62,7 @@ export function NativeGuestHome({ setup = null }) {
   const proxyDirty = useRef(false);
   const pollNow = useRef(null);
   const lifecycleAction = useRef(null);
+  const stopAction = useRef(null);
 
   function confirm(options) {
     return new Promise(resolve => setDialog({ ...options, resolve }));
@@ -123,6 +125,7 @@ export function NativeGuestHome({ setup = null }) {
       failed: Boolean(!next.job?.running && next.job?.error),
       activity: next.job?.running ? next.job.kind || "" : "",
       network: networkState(next).label,
+      ...shellStatus(next, { setup: setupActive.current }),
       destination: currentPage.current,
     });
   }
@@ -149,7 +152,7 @@ export function NativeGuestHome({ setup = null }) {
           void native("showGuestControls").catch(() => {});
         }
         wasRunning = next.vm_running;
-        const key = JSON.stringify([setupActive.current, next.vm_running, next.ready, next.job?.running, next.job?.error, networkState(next).label, currentPage.current]);
+        const key = JSON.stringify([setupActive.current, next.vm_running, next.ready, next.job?.running, next.job?.error, networkState(next).label, shellStatus(next, { setup: setupActive.current }).detail, currentPage.current]);
         if (key !== lastNavigation) {
           lastNavigation = key;
           void publishNavigation(next).catch(() => {});
@@ -173,6 +176,7 @@ export function NativeGuestHome({ setup = null }) {
     }
     function navigationRequested(event) {
       if (event.detail === "start" || event.detail === "restart") void lifecycleAction.current?.(event.detail);
+      else if (event.detail === "stop") void stopAction.current?.();
       else void navigate(event.detail);
     }
     window.addEventListener("cage-guest-settings", settingsRequested);
@@ -262,6 +266,7 @@ export function NativeGuestHome({ setup = null }) {
     } catch (failure) { setError(failure.message); }
     finally { setRequest(false); }
   };
+  stopAction.current = stop;
   async function stop() {
     if (!latest.current?.vm_running || request || latest.current.job?.running) return;
     if (!await confirm({ title: "停止 macOS 客机？", body: "请先保存客机中的工作。停止后客机文件和登录资料会保留，可随时再次启动。", confirm: "停止客机" })) return;
