@@ -5,10 +5,11 @@ import { useAccount } from "./account";
 import { requestMacOSRecovery } from "./macos-recovery";
 import { Modal } from "./modal";
 import { networkState } from "./safety-state.mjs";
-import { opensDesktop, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
+import { autoStartEnabled, opensDesktop, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
 import { embeddedSections, pageFor, pages } from "./vmac-pages.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
+import { GeneralPage } from "./vmac-general";
 import { SharingPage } from "./vmac-sharing";
 import { SpaceManagement } from "./space-management";
 import { DiskCapacity, GuestInputSources, GuestLoginDetails, GuestTimezone, VMProfiles } from "./vmac-management";
@@ -146,9 +147,7 @@ export function NativeGuestHome({ setup = null }) {
           acknowledged = true;
           void native("workbenchReady").catch(() => {});
           // Opening VMac brings the guest up, like opening a laptop.
-          let enabled = true;
-          try { enabled = localStorage.getItem("vmac.autoStartGuest") !== "0"; } catch { /* storage unavailable: keep the default */ }
-          if (shouldAutoStart(next, { enabled, attempted: false, installed: next.guest_system === "macos", setup: setupActive.current })) {
+          if (shouldAutoStart(next, { enabled: autoStartEnabled(localStorage), installed: next.guest_system === "macos", setup: setupActive.current })) {
             void lifecycleAction.current?.("start");
           }
         }
@@ -333,6 +332,7 @@ export function NativeGuestHome({ setup = null }) {
           onRestart={() => lifecycleAction.current?.("restart")} />
         <GuestInputSources ready={status.ready} onOpen={() => openDesktop("desktop", false)} />
       </> : page === "sharing" ? <SharingPage />
+      : page === "general" ? <GeneralPage />
       : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
           onConfirm={confirm} onSettings={openSettings} onInstall={setup && !installed ? () => navigate("overview") : undefined} />
       : page === "proxy" ? <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}

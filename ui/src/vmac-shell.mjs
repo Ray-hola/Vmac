@@ -22,10 +22,26 @@ export function shellStatus(status, { setup = false, now = Date.now() } = {}) {
 }
 
 // Whether opening VMac should start the guest by itself. Only a guest that is
-// installed, stopped and in no need of attention is started, once per launch.
-export function shouldAutoStart(status, { enabled, attempted, installed, setup }) {
-  return Boolean(enabled && !attempted && installed && !setup && status && !status.vm_running &&
+// installed, stopped and in no need of attention is started; the caller asks
+// once, with the first status of a launch.
+export function shouldAutoStart(status, { enabled, installed, setup }) {
+  return Boolean(enabled && installed && !setup && status && !status.vm_running &&
     !status.job?.running && !status.job?.error && !status.storage_recovery?.required);
+}
+
+const autoStartKey = "vmac.autoStartGuest";
+
+// Starting the guest on launch is on unless it was turned off; storage that
+// cannot be read or written keeps that default.
+export function autoStartEnabled(storage) {
+  try { return storage.getItem(autoStartKey) !== "0"; } catch { return true; }
+}
+
+export function setAutoStart(storage, enabled) {
+  try {
+    if (enabled) storage.removeItem(autoStartKey);
+    else storage.setItem(autoStartKey, "0");
+  } catch { /* storage unavailable: the switch falls back to on */ }
 }
 
 // Whether the overview gives way to the boot view: only while a start or

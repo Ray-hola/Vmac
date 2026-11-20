@@ -620,6 +620,9 @@ function ThemeLibrary({ appearance, update, saving, onError }) {
 export function AppearanceSettings() {
   const { appearance, theme, variant, loading, saving, error, update, retry } =
     useAppearance();
+  // VMac has one fixed look, so it keeps only the settings that do not touch
+  // the palette or the workbench's terminal.
+  const vmac = Boolean(window.cageNativeVMWorkbench);
   const [codeFonts, setCodeFonts] = useState(isLinux ? [] : codeFontSuggestions);
   useEffect(() => {
     if (isLinux) void installedLinuxCodeFonts().then(setCodeFonts);
@@ -651,12 +654,11 @@ export function AppearanceSettings() {
   return (
     <div className="appearance-settings">
       <div className="section-title">
-        <h3>外观</h3>
-        <p>更改自动保存并即时生效，无需重启项目。</p>
+        <h3>{vmac ? "显示" : "外观"}</h3>
+        <p>{vmac ? "更改自动保存并即时生效。" : "更改自动保存并即时生效，无需重启项目。"}</p>
       </div>
       <fieldset disabled={loading || syncing} className="appearance-fields">
-        {/* VMac is always light. */}
-        {!window.cageNativeVMWorkbench && (
+        {!vmac && (
           <SettingRow
             label="主题"
             description="跟随系统，或固定使用浅色、深色外观。"
@@ -679,30 +681,34 @@ export function AppearanceSettings() {
             </div>
           </SettingRow>
         )}
-        <ThemeLibrary
-          key={String(loading)}
-          appearance={appearance}
-          update={update}
-          saving={saving}
-          onError={setThemeError}
-        />
+        {!vmac && (
+          <ThemeLibrary
+            key={String(loading)}
+            appearance={appearance}
+            update={update}
+            saving={saving}
+            onError={setThemeError}
+          />
+        )}
         {themeError && (
           <div className="error-message" role="alert">
             {themeError}
           </div>
         )}
-        <div className="theme-card-grid">
-          {["light", "dark"].map((key) => (
-            <ThemeCard
-              key={key}
-              variant={key}
-              codeFonts={codeFonts}
-              value={appearance[key + "Theme"]}
-              active={variant === key}
-              onChange={(value) => patch({ [key + "Theme"]: value })}
-            />
-          ))}
-        </div>
+        {!vmac && (
+          <div className="theme-card-grid">
+            {["light", "dark"].map((key) => (
+              <ThemeCard
+                key={key}
+                variant={key}
+                codeFonts={codeFonts}
+                value={appearance[key + "Theme"]}
+                active={variant === key}
+                onChange={(value) => patch({ [key + "Theme"]: value })}
+              />
+            ))}
+          </div>
+        )}
         <h4>字体</h4>
         <SettingRow
           label="界面字号"
@@ -715,31 +721,35 @@ export function AppearanceSettings() {
             onChange={(value) => patch({ uiFontSize: value })}
           />
         </SettingRow>
-        <SettingRow
-          label="代码字号"
-          description="调整内置终端与代码预览的文字大小。"
-        >
-          <FontSizeInput
+        {!vmac && (
+          <SettingRow
             label="代码字号"
-            value={appearance.codeFontSize}
-            min={10}
-            onChange={(value) => patch({ codeFontSize: value })}
-          />
-        </SettingRow>
-        <div
-          className="appearance-sample"
-          style={{ fontFamily: theme.fonts.ui || systemUIFont }}
-        >
-          <span>在熟悉的工作区，专注下一步。</span>
-          <code
-            style={{
-              fontFamily: theme.fonts.code || systemCodeFont,
-              fontSize: appearance.codeFontSize,
-            }}
+            description="调整内置终端与代码预览的文字大小。"
           >
-            const workspace = "VMac";
-          </code>
-        </div>
+            <FontSizeInput
+              label="代码字号"
+              value={appearance.codeFontSize}
+              min={10}
+              onChange={(value) => patch({ codeFontSize: value })}
+            />
+          </SettingRow>
+        )}
+        {!vmac && (
+          <div
+            className="appearance-sample"
+            style={{ fontFamily: theme.fonts.ui || systemUIFont }}
+          >
+            <span>在熟悉的工作区，专注下一步。</span>
+            <code
+              style={{
+                fontFamily: theme.fonts.code || systemCodeFont,
+                fontSize: appearance.codeFontSize,
+              }}
+            >
+              const workspace = "VMac";
+            </code>
+          </div>
+        )}
         <h4>显示与交互</h4>
         <SettingRow
           label="使用指针光标"
@@ -777,20 +787,22 @@ export function AppearanceSettings() {
             <option value="off">关闭</option>
           </InlineSelect>
         </SettingRow>
-        <div className="appearance-import">
-          <div>
-            <strong>沿用 Codex 的外观</strong>
-            <p>导入本机 Codex 当前的主题、配色与字体偏好。</p>
+        {!vmac && (
+          <div className="appearance-import">
+            <div>
+              <strong>沿用 Codex 的外观</strong>
+              <p>导入本机 Codex 当前的主题、配色与字体偏好。</p>
+            </div>
+            <button onClick={sync}>
+              {syncing ? (
+                <LoaderCircle size={15} className="spin" />
+              ) : (
+                <Download size={15} />
+              )}
+              从本机 Codex 同步
+            </button>
           </div>
-          <button onClick={sync}>
-            {syncing ? (
-              <LoaderCircle size={15} className="spin" />
-            ) : (
-              <Download size={15} />
-            )}
-            从本机 Codex 同步
-          </button>
-        </div>
+        )}
       </fieldset>
       <div className="appearance-save-state" role="status">
         {saving ? (

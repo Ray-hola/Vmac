@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bootView, opensDesktop, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
+import { autoStartEnabled, bootView, opensDesktop, setAutoStart, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
 
 const now = Date.parse("2026-11-20T12:00:00Z");
 const later = "2026-11-20T12:10:00Z";
@@ -40,13 +40,12 @@ test("the network gate decides the rest", () => {
 });
 
 const stopped = { vm_running: false };
-const allowed = { enabled: true, attempted: false, installed: true, setup: false };
+const allowed = { enabled: true, installed: true, setup: false };
 test("a stopped, installed guest starts on launch", () => {
   assert.equal(shouldAutoStart(stopped, allowed), true);
 });
 for (const [name, value, options] of [
   ["the setting is off", stopped, { ...allowed, enabled: false }],
-  ["it was already tried this launch", stopped, { ...allowed, attempted: true }],
   ["the guest is not installed", stopped, { ...allowed, installed: false }],
   ["setup is still pending", stopped, { ...allowed, setup: true }],
   ["there is no status yet", null, allowed],
@@ -80,4 +79,24 @@ test("only the desktop destination of a ready guest opens the desktop", () => {
   assert.equal(opensDesktop("desktop", { ready: true, setup: true }), false);
   assert.equal(opensDesktop("overview", { ready: true, setup: false }), false);
   assert.equal(opensDesktop("proxy", { ready: true, setup: false }), false);
+});
+
+function fakeStorage(initial = {}) {
+  const data = { ...initial };
+  return { data, getItem: key => (key in data ? data[key] : null), setItem: (key, value) => { data[key] = String(value); }, removeItem: key => { delete data[key]; } };
+}
+test("starting the guest on launch is on until it is turned off", () => {
+  const storage = fakeStorage();
+  assert.equal(autoStartEnabled(storage), true);
+  setAutoStart(storage, false);
+  assert.equal(storage.data["vmac.autoStartGuest"], "0");
+  assert.equal(autoStartEnabled(storage), false);
+  setAutoStart(storage, true);
+  assert.equal("vmac.autoStartGuest" in storage.data, false);
+  assert.equal(autoStartEnabled(storage), true);
+});
+test("unreadable storage keeps the default", () => {
+  const broken = { getItem() { throw new Error("denied"); }, setItem() { throw new Error("denied"); }, removeItem() { throw new Error("denied"); } };
+  assert.equal(autoStartEnabled(broken), true);
+  assert.doesNotThrow(() => setAutoStart(broken, false));
 });
