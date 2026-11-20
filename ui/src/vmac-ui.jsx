@@ -1,12 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
-// A switch is the platform's own control where the browser has one (the
-// `switch` attribute); elsewhere the stylesheet draws the checkbox as one.
-if (typeof HTMLInputElement !== "undefined" && !("switch" in HTMLInputElement.prototype)) {
-  document.documentElement.classList.add("vm-no-switch");
-}
-
 // A segmented control whose highlight slides to the selected option.
 export function Segmented({ items, value, onChange, label, disabled = false }) {
   const group = useRef(null);
@@ -40,19 +34,23 @@ export function State({ tone = "idle", children }) {
   return <span className={`vm-state ${tone}`}><i aria-hidden="true" />{children}</span>;
 }
 
-export function PageHeader({ title, subtitle }) {
+// The top of a page: its name and what the page is for.
+export function PageHeader({ title, subtitle, aside }) {
   return <header className="vm-header">
-    <h1>{title}</h1>
-    {subtitle && <p>{subtitle}</p>}
+    <div>
+      <h1>{title}</h1>
+      {subtitle && <p>{subtitle}</p>}
+    </div>
+    {aside}
   </header>;
 }
 
-// A card of rows. `title` is shown as the card's first line; `label` only
-// names the group for assistive technology, for a card that needs no heading.
+// A section: a heading over its rows. `label` only names the section for
+// assistive technology, for one that needs no visible heading.
 export function Group({ title, label, children }) {
-  return <section className="vm-group" aria-label={title || label}>
-    {title && <h2 className="vm-group-title">{title}</h2>}
-    <div className="vm-group-rows">{children}</div>
+  return <section className="vm-section" aria-label={title || label}>
+    {title && <h2 className="vm-section-label">{title}</h2>}
+    <div className="vm-section-body">{children}</div>
   </section>;
 }
 
@@ -64,18 +62,18 @@ export function Row({ title, detail, children }) {
   </div>;
 }
 
-// A row that opens another page: the whole row is the button.
-export function LinkRow({ icon: Icon, title, detail, children, onClick }) {
+// A row that opens another page: the whole row is the button, and what the
+// page currently says sits at the right.
+export function LinkRow({ title, detail, value, onClick }) {
   return <button type="button" className="vm-row" onClick={onClick}>
-    {Icon && <span className="vm-row-icon" aria-hidden="true"><Icon size={17} /></span>}
     <span className="vm-row-text"><span>{title}</span>{detail && <small>{detail}</small>}</span>
-    {children && <span className="vm-row-control">{children}</span>}
-    <ChevronRight size={16} className="vm-row-chevron" aria-hidden="true" />
+    {value && <span className="vm-row-value">{value}</span>}
+    <ChevronRight size={16} className="vm-row-arrow" aria-hidden="true" />
   </button>;
 }
 
 export function Toggle({ checked, onChange, label, disabled = false }) {
-  return <input type="checkbox" switch="" role="switch" className="vm-switch" aria-label={label}
+  return <input type="checkbox" role="switch" className="vm-switch" aria-label={label}
     checked={Boolean(checked)} disabled={disabled} onChange={event => onChange(event.target.checked)} />;
 }
 

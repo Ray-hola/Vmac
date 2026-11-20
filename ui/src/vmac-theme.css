@@ -1,40 +1,44 @@
 /*
- * VMac theme: white surfaces, near-black text and one blue accent. VMac is
- * always light. The values mirror vmac-tokens.mjs; vmac-theme.test.mjs fails
- * when they drift.
+ * VMac theme: DeepSeek's palette, shapes and type scale, read from its own
+ * stylesheet. A white page, a #F9FAFB sidebar, #F1F3F5 fields, near-black
+ * text and one blue. VMac is always light. The values mirror vmac-tokens.mjs;
+ * vmac-theme.test.mjs fails when they drift.
  */
 :root.vmac-theme {
-  --chrome: #f9fafb !important; --chrome-dark: #f1f3f5 !important; --paper: #ffffff !important; --input: #ffffff !important;
-  --ink: #0f1115 !important; --strong: #0f1115 !important; --muted: #61666b !important; --line: rgba(0,0,0,.08) !important; --border: rgba(0,0,0,.08) !important;
-  --accent: #3964fe !important; --focus: #3964fe !important; --hover: rgba(38,49,72,.06) !important; --selected: #e4edfd !important; --selection: #e4edfd !important;
-  --button: #3964fe !important; --button-ink: #ffffff !important; --link: #2648cc !important; --success: #15803d !important; --danger: #b91c1c !important;
-  --ui-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif !important;
-  --code-font-family: "SF Mono", ui-monospace, Menlo, "PingFang SC", monospace !important;
-  --card: #ffffff; --well: #f1f3f5; --warn: #b45309; --faint: #81858c; --accent-text: #2648cc;
-  --button-hover: #2f56e8; --button-active: #2648cc;
-  --ok-dot: #22c55e; --warn-dot: #f59e0b; --bad-dot: #f25a5a;
-  --accent-soft: #e4edfd; --success-soft: rgba(34, 197, 94, .12); --warn-soft: rgba(245, 158, 11, .12); --danger-soft: rgba(242, 90, 90, .12);
-  /* Type scale. The root size is the interface text size (14px unless the
-     user changes it), so sizes in rem follow that setting on every page. */
-  --vm-text-xs: .857rem; --vm-text-sm: .929rem; --vm-text-md: 1rem; --vm-text-lg: 1.143rem; --vm-text-xl: 1.429rem; --vm-text-2xl: 1.857rem;
-  /* Edges. A card's hairline is decoration; the edge of a field is what
-     shows where to type, so it keeps 3:1 against the page. */
-  --vm-hairline: rgba(15, 17, 21, .09); --vm-button-border: #d9dce1; --vm-control-border: #8b9098;
-  --radius-group: 14px; --radius-control: 10px; --radius-tag: 6px;
-  /* Depth is built from stacked soft shadows. */
-  --vm-shadow-xs: 0 1px 2px rgba(15, 17, 21, .04);
-  --vm-shadow: 0 1px 2px rgba(15, 17, 21, .05), 0 4px 12px rgba(15, 17, 21, .06), 0 16px 40px rgba(15, 17, 21, .08);
-  /* Motion: three durations and one curve. --vm-move scales every distance
-     and turns to 0 when motion is reduced, which leaves plain fades. */
-  --vm-ease: cubic-bezier(.2, .8, .2, 1); --vm-fast: 120ms; --vm-mid: 200ms; --vm-slow: 320ms; --vm-move: 1;
+  --paper: #ffffff !important; --chrome: #f9fafb !important; --chrome-dark: #f1f3f5 !important; --input: #f1f3f5 !important;
+  --ink: #0f1115 !important; --strong: #0f1115 !important; --muted: #61666b !important;
+  --line: rgba(0, 0, 0, .1) !important; --border: rgba(0, 0, 0, .1) !important;
+  --accent: #3964fe !important; --focus: #3964fe !important; --link: #3964fe !important;
+  --button: #3964fe !important; --button-ink: #ffffff !important;
+  --hover: rgba(38, 49, 72, .06) !important; --selected: #e4edfd !important; --selection: #e4edfd !important;
+  /* A good state is said in the one blue; red is for failure, amber for a warning. */
+  --success: #3964fe !important; --danger: #ec1313 !important;
+  --ui-font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif !important;
+  --code-font-family: Menlo, Monaco, "SF Mono", ui-monospace, "PingFang SC", monospace !important;
+  --card: #ffffff; --well: #f1f3f5; --nav-active: #ebeef2; --warn: #dd8629; --faint: #81858c; --caption: #adb2b8;
+  --accent-text: #3964fe; --accent-soft: #e4edfd; --accent-faint: #edf3fe; --accent-border: #b7c8fe;
+  --button-hover: #5686fe; --button-active: #3964fe; --pressed: rgba(38, 49, 72, .1);
+  --ok-dot: #3964fe; --warn-dot: #f59e0b; --bad-dot: #ec1313;
+  --success-soft: #edf3fe; --warn-soft: #fef5e7; --danger-soft: rgba(236, 19, 19, .05);
+  /* Type scale: 12, 13, 14, 16, 20 and 24 at the default text size. The root
+     size is the interface text size, so sizes in rem follow that setting. */
+  --vm-text-xs: .857rem; --vm-text-sm: .929rem; --vm-text-md: 1rem; --vm-text-lg: 1.143rem; --vm-text-xl: 1.429rem; --vm-text-2xl: 1.714rem;
+  /* Shapes: buttons are full pills, fields 10px, list items 12px, dialogs 24px. */
+  --radius-pill: 4096px; --radius-control: 10px; --radius-item: 12px; --radius-group: 16px; --radius-modal: 24px; --radius-tag: 6px;
+  --vm-shadow-1: 0 2px 4px rgba(0, 0, 0, .05);
+  --vm-shadow-2: 0 4px 12px rgba(0, 0, 0, .02), 0 2px 8px rgba(0, 0, 0, .04);
+  --vm-shadow: 0 0 1px rgba(0, 0, 0, .2), 0 0 4px rgba(0, 0, 0, .02), 0 12px 32px rgba(0, 0, 0, .08);
+  /* Motion: DeepSeek's three durations and its curve. --vm-move scales every
+     distance and turns to 0 when motion is reduced, which leaves plain fades. */
+  --vm-ease: cubic-bezier(.4, 0, .2, 1); --vm-fast: 100ms; --vm-mid: 200ms; --vm-slow: 300ms; --vm-move: 1;
   color-scheme: light !important;
 }
 :root.vmac-theme[data-reduced-motion="true"] { --vm-move: 0; }
 @media (prefers-reduced-motion: reduce) {
   :root.vmac-theme { --vm-move: 0; }
 }
-/* Windows High Contrast and similar modes replace the palette: draw every
-   edge with the system's own colors so nothing depends on a shadow or tint. */
+/* Windows High Contrast and similar modes replace the palette with the
+   system's own colors. */
 @media (forced-colors: active) {
-  :root.vmac-theme { --vm-hairline: CanvasText; --vm-button-border: ButtonText; --vm-control-border: ButtonText; --line: CanvasText !important; --accent: Highlight !important; }
+  :root.vmac-theme { --line: CanvasText !important; --ink: CanvasText !important; --muted: CanvasText !important; --accent: Highlight !important; }
 }

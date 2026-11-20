@@ -46,7 +46,7 @@ export function ExitPolicyFields({
         <input
           type="checkbox"
           role="switch"
-          {...(window.cageNativeVMWorkbench ? { switch: "", className: "vm-switch" } : {})}
+          {...(window.cageNativeVMWorkbench ? { className: "vm-switch" } : {})}
           checked={policy.mode === "static"}
           onChange={(e) =>
             update("mode", e.target.checked ? "static" : "dynamic")

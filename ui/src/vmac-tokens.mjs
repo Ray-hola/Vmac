@@ -1,13 +1,15 @@
-// The VMac palette: white, near-black and one blue, in a single light
-// appearance. The web theme (vmac-theme.css) and the native palette
+// The VMac palette is DeepSeek's own, read from its stylesheet: a white page,
+// a #F9FAFB sidebar, #F1F3F5 fields, near-black text with two quieter steps
+// for secondary lines, and one blue for action and the current item. VMac is
+// always light. The web theme (vmac-theme.css) and the native palette
 // (desktop/VMacPalette.swift) each hold a copy; tests keep the three in step.
 export const tokens = {
   light: {
-    page: "#FFFFFF", chrome: "#F9FAFB", group: "#F1F3F5", popover: "#FFFFFF", line: "rgba(0,0,0,.08)",
-    ink: "#0F1115", muted: "#61666B", faint: "#81858C",
-    accent: "#3964FE", accentFill: "#3964FE", accentFillHover: "#2F56E8", accentFillActive: "#2648CC",
-    accentText: "#2648CC", accentSoft: "#E4EDFD", hover: "rgba(38,49,72,.06)", onAccent: "#FFFFFF",
-    okDot: "#22C55E", okText: "#15803D", warnDot: "#F59E0B", warnText: "#B45309", badDot: "#F25A5A", badText: "#B91C1C",
+    page: "#FFFFFF", chrome: "#F9FAFB", fill: "#F1F3F5", navActive: "#EBEEF2", popover: "#FFFFFF",
+    ink: "#0F1115", secondary: "#61666B", tertiary: "#81858C", caption: "#ADB2B8",
+    accent: "#3964FE", accentFill: "#3964FE", accentFillHover: "#5686FE", accentText: "#3964FE",
+    accentSoft: "#E4EDFD", accentFaint: "#EDF3FE", accentBorder: "#B7C8FE", onAccent: "#FFFFFF",
+    ok: "#22C55E", warn: "#F59E0B", warnText: "#DD8629", bad: "#EC1313", badOnDark: "#F25A5A", toast: "#353638",
   },
 };
 

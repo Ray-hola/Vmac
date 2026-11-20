@@ -22,28 +22,30 @@ private final class VMacStatusPill: NSView {
 
     override var wantsUpdateLayer: Bool { true }
     override var intrinsicContentSize: NSSize {
-        NSSize(width: min(360, label.intrinsicContentSize.width + 38), height: 24)
+        NSSize(width: min(360, label.intrinsicContentSize.width + 40), height: 26)
     }
     override func layout() {
         super.layout()
         layer?.cornerRadius = bounds.height / 2
-        dot.frame = NSRect(x: 11, y: (bounds.height - 7) / 2, width: 7, height: 7)
+        dot.frame = NSRect(x: 12, y: (bounds.height - 7) / 2, width: 7, height: 7)
         dot.cornerRadius = 3.5
-        label.frame = NSRect(x: 25, y: (bounds.height - label.intrinsicContentSize.height) / 2,
-                             width: max(0, bounds.width - 37), height: label.intrinsicContentSize.height)
+        label.frame = NSRect(x: 26, y: (bounds.height - label.intrinsicContentSize.height) / 2,
+                             width: max(0, bounds.width - 39), height: label.intrinsicContentSize.height)
     }
     // Runs under the view's own appearance, so the colors follow light and dark.
     override func updateLayer() {
-        layer?.backgroundColor = (pressed ? CagePalette.line : CagePalette.group).cgColor
+        // A white pill with a light edge, like every plain button in VMac.
+        layer?.backgroundColor = (pressed ? CagePalette.track : CagePalette.card).cgColor
+        layer?.borderColor = CagePalette.line.cgColor
+        layer?.borderWidth = 1
         dot.backgroundColor = toneColor.cgColor
     }
     private var toneColor: NSColor {
         switch status.tone {
-        case .busy: return CagePalette.accent
-        case .ok: return CagePalette.success
+        case .busy, .ok: return CagePalette.accent
         case .warn: return CagePalette.warn
+        case .idle: return CagePalette.caption
         case .bad: return CagePalette.danger
-        case .idle: return CagePalette.faint
         }
     }
 
@@ -54,7 +56,7 @@ private final class VMacStatusPill: NSView {
             .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: CagePalette.ink])
         if !next.detail.isEmpty {
             text.append(NSAttributedString(string: " · " + next.detail, attributes: [
-                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: CagePalette.muted]))
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: CagePalette.secondary]))
         }
         label.attributedStringValue = text
         setAccessibilityLabel("客机状态：\(next.title)，\(next.detail)")
@@ -80,6 +82,35 @@ private final class VMacStatusPill: NSView {
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
 }
 
+/// A white pill with a light edge: the plain button of VMac's pages, for the
+/// places where AppKit would draw its own.
+private final class VMacPillButton: NSButton {
+    private var pressed = false
+    convenience init(_ text: String, target: AnyObject?, action: Selector) {
+        self.init(frame: .zero)
+        self.target = target; self.action = action
+        isBordered = false; wantsLayer = true
+        attributedTitle = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 12), .foregroundColor: CagePalette.ink])
+    }
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: attributedTitle.size().width + 24, height: 26)
+    }
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        layer?.cornerRadius = bounds.height / 2
+        layer?.backgroundColor = (pressed ? CagePalette.track : CagePalette.card).cgColor
+        layer?.borderColor = CagePalette.line.cgColor
+        layer?.borderWidth = 1
+    }
+    // The button's own tracking returns when the mouse is released.
+    override func mouseDown(with event: NSEvent) {
+        pressed = true; needsDisplay = true
+        super.mouseDown(with: event)
+        pressed = false; needsDisplay = true
+    }
+}
+
 /// What the status pill opens: three facts about the guest, and the pages
 /// that say more about each.
 final class VMacStatusPopover: NSViewController {
@@ -92,8 +123,8 @@ final class VMacStatusPopover: NSViewController {
     override func loadView() {
         let grid = NSGridView(views: zip(Self.rows, values).map { title, value in
             let label = NSTextField(labelWithString: title)
-            label.font = .systemFont(ofSize: 12); label.textColor = CagePalette.muted
-            value.font = .systemFont(ofSize: 12, weight: .medium); value.textColor = CagePalette.ink
+            label.font = .systemFont(ofSize: 12); label.textColor = CagePalette.secondary
+            value.font = .systemFont(ofSize: 12); value.textColor = CagePalette.ink
             value.alignment = .right; value.lineBreakMode = .byTruncatingMiddle
             value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             return [label, value]
@@ -103,8 +134,8 @@ final class VMacStatusPopover: NSViewController {
         grid.column(at: 1).xPlacement = .trailing
         let line = NSBox(); line.boxType = .separator
         let buttons = NSStackView(views: Self.pages.enumerated().map { index, page in
-            let button = NSButton(title: page.0, target: self, action: #selector(open(_:)))
-            button.bezelStyle = .rounded; button.controlSize = .small; button.tag = index
+            let button = VMacPillButton(page.0, target: self, action: #selector(open(_:)))
+            button.tag = index
             return button
         })
         buttons.distribution = .fillEqually; buttons.spacing = 8

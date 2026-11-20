@@ -361,7 +361,8 @@ export function NativeGuestHome({ setup = null }) {
     return release || undefined;
   }, [pageKey]);
   return <main ref={scroller} className={showSetup ? "native-guest-home native-setup-home" : "native-guest-home"}>
-    {!showSetup && <PageHeader title={pages[page].title} subtitle={pages[page].subtitle} />}
+    {/* The overview is about the guest, which names itself in the middle of the page. */}
+    {!showSetup && !lifecycle && <PageHeader title={pages[page].title} subtitle={pages[page].subtitle} />}
     {setup && <div className="native-setup-content" hidden={!showSetup}>{setup}</div>}
     {!showSetup && issue && <div className="vm-banner" role="alert"><CircleAlert size={17} aria-hidden="true" /><span>{issue}</span><button onClick={() => { setError(""); void pollNow.current?.(); void refreshSettings(); }}>重新检查</button></div>}
     {!showSetup && <div className="vm-page" key={pageKey}>

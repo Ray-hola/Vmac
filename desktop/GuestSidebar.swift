@@ -50,7 +50,7 @@ private final class GuestNavigationButton: NSButton {
         title = ""; image = nil
         toolTip = label
         labelView.stringValue = label
-        labelView.font = .systemFont(ofSize: 13, weight: .medium)
+        labelView.font = .systemFont(ofSize: 13)
         labelView.lineBreakMode = .byTruncatingTail
         labelView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         iconView.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
@@ -75,12 +75,13 @@ private final class GuestNavigationButton: NSButton {
     override func mouseEntered(with event: NSEvent) { hover = true; updateStyle() }
     override func mouseExited(with event: NSEvent) { hover = false; updateStyle() }
     private func updateStyle() {
+        // The current page is said in blue over the pale blue fill that
+        // slides to it; the row under the pointer takes a faint fill.
         let color = selected ? CagePalette.accentText : CagePalette.ink
         iconView.contentTintColor = color; labelView.textColor = color
-        // The selection pill behind the rows carries the selected background.
-        SidebarMotion.layers(SidebarMotion.fast) {
-            layer?.backgroundColor = hover && !selected ? CagePalette.hover.cgColor : NSColor.clear.cgColor
-        }
+        labelView.font = .systemFont(ofSize: 13, weight: selected ? .medium : .regular)
+        layer?.cornerRadius = 10
+        layer?.backgroundColor = (hover && !selected ? CagePalette.hover : NSColor.clear).cgColor
         setAccessibilityValue(selected ? "已选择" : "")
     }
 }
@@ -182,16 +183,16 @@ private final class SidebarMachineCard: NSView {
     private let state = NSTextField(labelWithString: "已停止")
     private var hover = false
     private var tracking: NSTrackingArea?
-    private var dotColor = CagePalette.faint
+    /// A guest at rest is a pale dot; one that runs is a blue dot.
+    private var dotColor = CagePalette.caption
     override var isFlipped: Bool { true }
     init(profile: String) {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 10
-        layer?.borderWidth = 1
         name.stringValue = profile
-        name.font = .systemFont(ofSize: 12.5, weight: .semibold); name.textColor = CagePalette.ink
-        state.font = .systemFont(ofSize: 11.5); state.textColor = CagePalette.muted
+        layer?.cornerRadius = 12
+        name.font = .systemFont(ofSize: 13, weight: .medium); name.textColor = CagePalette.ink
+        state.font = .systemFont(ofSize: 11.5); state.textColor = CagePalette.secondary
         for label in [name, state] { label.lineBreakMode = .byTruncatingTail; label.cell?.usesSingleLineMode = true; label.wantsLayer = true; addSubview(label) }
         layer?.addSublayer(halo); layer?.addSublayer(dot)
         dot.cornerRadius = 4; halo.cornerRadius = 8
@@ -219,9 +220,9 @@ private final class SidebarMachineCard: NSView {
         let text = setup ? "等待安装" : busy ? (["start": "正在启动…", "restart": "正在重启…", "stop": "正在停止…"][activity] ?? "正在处理…")
             : ready ? "回到桌面" : running ? "运行中 · 连接中" : "已停止"
         if state.stringValue != text { SidebarMotion.fade(state.layer); state.stringValue = text }
-        state.textColor = returning ? CagePalette.accentText : CagePalette.muted
+        state.textColor = returning ? CagePalette.accentText : CagePalette.secondary
         state.font = .systemFont(ofSize: 11.5, weight: returning ? .medium : .regular)
-        dotColor = setup ? CagePalette.faint : busy || (running && !ready) ? CagePalette.accent : ready ? CagePalette.success : CagePalette.faint
+        dotColor = !setup && (busy || running) ? CagePalette.accent : CagePalette.caption
         refreshDot()
         let pulsing = (busy || (running && !ready)) && !setup
         if pulsing, halo.animation(forKey: "pulse") == nil, !SidebarMotion.reduced {
@@ -240,14 +241,12 @@ private final class SidebarMachineCard: NSView {
     private func refreshDot() {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         dot.backgroundColor = dotColor.cgColor
-        halo.backgroundColor = dotColor.withAlphaComponent(0.2).cgColor
+        halo.backgroundColor = CagePalette.accentSoft.cgColor
         CATransaction.commit()
     }
     private func refreshChrome() {
-        SidebarMotion.layers(SidebarMotion.fast) {
-            layer?.backgroundColor = (hover ? CagePalette.group : CagePalette.card).cgColor
-            layer?.borderColor = CagePalette.line.cgColor
-        }
+        // Under the pointer the guest takes the same faint fill as a row.
+        layer?.backgroundColor = (hover ? CagePalette.hover : NSColor.clear).cgColor
     }
     override func updateTrackingAreas() {
         if let tracking { removeTrackingArea(tracking) }
@@ -266,8 +265,7 @@ private final class SidebarMachineCard: NSView {
 
 /// A status lamp that also navigates to the page explaining it.
 private final class SidebarLamp: NSButton {
-    var color = CagePalette.muted
-    var active = false
+    var color = CagePalette.caption
     private var hover = false
     private var tracking: NSTrackingArea?
     private let name: String
@@ -276,23 +274,21 @@ private final class SidebarLamp: NSButton {
         self.name = name
         super.init(frame: .zero)
         title = ""; isBordered = false; bezelStyle = .inline
-        wantsLayer = true; layer?.cornerRadius = 6
+        wantsLayer = true
         setAccessibilityLabel(name)
     }
     required init?(coder: NSCoder) { fatalError() }
     func update(_ detail: String, _ state: Int) {
-        active = state == 1 || state == 2 || state == 4
-        color = state == 1 ? CagePalette.success : state == 2 ? CagePalette.accent : state == 4 ? CagePalette.danger : CagePalette.faint
+        // Blue when well or working, red when failed, pale when at rest.
+        color = state == 1 || state == 2 ? CagePalette.accent : state == 4 ? CagePalette.danger : CagePalette.caption
         toolTip = "\(name)：\(detail)"; setAccessibilityValue(detail); needsDisplay = true
     }
     override func draw(_ dirtyRect: NSRect) {
-        let label = NSAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: hover ? CagePalette.ink : CagePalette.muted])
+        let label = NSAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: hover ? CagePalette.ink : CagePalette.secondary])
         let width = 7 + 5 + label.size().width
         let x = (bounds.width - width) / 2
         let rect = NSRect(x: x, y: bounds.midY-3.5, width: 7, height: 7)
-        let path = NSBezierPath(ovalIn: rect)
-        color.setStroke(); path.lineWidth = 1; path.stroke()
-        if active { color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1.2, dy: 1.2)).fill() }
+        color.setFill(); NSBezierPath(ovalIn: rect).fill()
         label.draw(at: NSPoint(x: rect.maxX + 5, y: bounds.midY - label.size().height / 2))
     }
     override func updateTrackingAreas() {
@@ -304,7 +300,6 @@ private final class SidebarLamp: NSButton {
     override func mouseEntered(with event: NSEvent) { hover = true; hoverChanged() }
     override func mouseExited(with event: NSEvent) { hover = false; hoverChanged() }
     private func hoverChanged() {
-        SidebarMotion.layers(SidebarMotion.fast) { layer?.backgroundColor = hover ? CagePalette.hover.cgColor : NSColor.clear.cgColor }
         needsDisplay = true
     }
 }
@@ -341,10 +336,11 @@ private final class SidebarTelemetry: NSView {
             lamp.identifier = NSUserInterfaceItemIdentifier(destination)
             addSubview(lamp)
         }
-        track.cornerRadius = 2
-        track.backgroundColor = CagePalette.line.cgColor
-        fill.cornerRadius = 2; fill.anchorPoint = .zero
-        layer?.addSublayer(track); track.addSublayer(fill)
+        // What is left of the quota: a blue bar in a soft track.
+        track.backgroundColor = CagePalette.track.cgColor
+        track.cornerRadius = 2; fill.cornerRadius = 2
+        fill.anchorPoint = .zero
+        layer?.addSublayer(track); layer?.addSublayer(fill)
     }
     required init?(coder: NSCoder) { fatalError() }
     @objc private func lampPressed(_ sender: NSButton) { if let id = sender.identifier?.rawValue { onSelect?(id) } }
@@ -388,8 +384,9 @@ private final class SidebarTelemetry: NSView {
         let apply = {
             self.track.frame = bar
             self.fill.bounds = CGRect(x: 0, y: 0, width: bar.width * remaining, height: bar.height)
-            self.fill.position = .zero
-            self.fill.backgroundColor = ((self.usedPercent ?? 0) > 85 ? CagePalette.warn : CagePalette.success).cgColor
+            self.fill.position = bar.origin
+            // Nearly used up: the bar turns amber, and the words beside it say so.
+            self.fill.backgroundColor = ((self.usedPercent ?? 0) > 85 ? CagePalette.warn : CagePalette.accent).cgColor
         }
         if animated { SidebarMotion.layers(SidebarMotion.slow, apply) }
         else { CATransaction.begin(); CATransaction.setDisableActions(true); apply(); CATransaction.commit() }
@@ -403,7 +400,6 @@ private final class SidebarTelemetry: NSView {
         layoutQuota(animated: false)
     }
     override func draw(_ dirtyRect: NSRect) {
-        CagePalette.line.setStroke();let path=NSBezierPath();path.move(to:NSPoint(x:12,y:0.5));path.line(to:NSPoint(x:bounds.width-12,y:0.5));path.lineWidth=1;path.stroke()
         func text(_ value:String,_ rect:NSRect,_ size:CGFloat,_ color:NSColor) {
             let style=NSMutableParagraphStyle();style.lineBreakMode = .byTruncatingTail;style.alignment = .center
             (value as NSString).draw(in:rect,withAttributes:[.font:CagePalette.mono(size),.foregroundColor:color,.paragraphStyle:style])
@@ -411,15 +407,15 @@ private final class SidebarTelemetry: NSView {
         func speed(_ value: String, y: CGFloat, color: NSColor) {
             let line = NSMutableAttributedString(
                 string: value,
-                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 15, weight: .semibold), .foregroundColor: CagePalette.ink]
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .medium), .foregroundColor: CagePalette.ink]
             )
             line.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: 1))
             line.draw(at: NSPoint(x: (bounds.width-line.size().width)/2, y: y))
         }
         speed(up, y: 12, color: CagePalette.accent)
-        speed(down, y: 33, color: CagePalette.success)
-        text(total, NSRect(x: 8, y: 60, width: bounds.width-16, height: 17), 12, CagePalette.ink)
-        text(coverage, NSRect(x: 8, y: 77, width: bounds.width-16, height: 16), 11, CagePalette.muted)
+        speed(down, y: 33, color: CagePalette.accent)
+        text(total, NSRect(x: 8, y: 60, width: bounds.width-16, height: 17), 12, CagePalette.secondary)
+        text(coverage, NSRect(x: 8, y: 77, width: bounds.width-16, height: 16), 11, CagePalette.secondary)
     }
 }
 
@@ -464,22 +460,23 @@ final class CageGuestSidebar: NSView {
         wantsLayer=true
         layer?.backgroundColor = CagePalette.sidebar.cgColor
         translatesAutoresizingMaskIntoConstraints=false
-        brand.font = .systemFont(ofSize: 20, weight: .semibold);brand.textColor=CagePalette.ink;brand.lineBreakMode = .byTruncatingTail;brand.cell?.usesSingleLineMode=true;addSubview(brand)
+        brand.font = .systemFont(ofSize: 18, weight: .semibold);brand.textColor=CagePalette.ink;brand.lineBreakMode = .byTruncatingTail;brand.cell?.usesSingleLineMode=true;addSubview(brand)
         if let path=Bundle.main.path(forResource:"VMacMark",ofType:"pdf") { logo.image=NSImage(contentsOfFile:path) }
         logo.imageScaling = .scaleProportionallyUpOrDown;logo.setAccessibilityElement(false);addSubview(logo)
         machine.onOpen = { [weak self] in self?.onSelect?("desktop") }
         machine.power.target = self; machine.power.action = #selector(powerPressed)
         addSubview(machine)
+        // The current page sits on a pale blue fill that slides to it.
         pill.wantsLayer = true
-        pill.layer?.cornerRadius = 8
         pill.layer?.backgroundColor = CagePalette.accentSoft.cgColor
+        pill.layer?.cornerRadius = 10
         addSubview(pill)
         var group = ""
         for (id,label,symbol,section) in pageRows {
             if section != group, !section.isEmpty {
                 let header = NSTextField(labelWithString: section)
-                header.font = .systemFont(ofSize: 11, weight: .medium)
-                header.textColor = CagePalette.faint
+                header.font = .systemFont(ofSize: 11.5, weight: .medium)
+                header.textColor = CagePalette.tertiary
                 header.setAccessibilityRole(.staticText)
                 addSubview(header); headers[id] = header
             }
@@ -488,7 +485,7 @@ final class CageGuestSidebar: NSView {
             button.identifier=NSUserInterfaceItemIdentifier(id)
             button.configure(label: label, symbol: symbol)
             button.isBordered=false;button.bezelStyle = .inline;button.focusRingType = .default
-            button.wantsLayer=true;button.layer?.cornerRadius=8;button.setAccessibilityLabel(label)
+            button.wantsLayer=true;button.setAccessibilityLabel(label)
             addSubview(button);rows[id]=button
         }
         telemetry.onSelect = { [weak self] id in self?.onSelect?(id) }
@@ -502,7 +499,7 @@ final class CageGuestSidebar: NSView {
         brand.frame=NSRect(x:50,y:21,width:max(0,bounds.width-60),height:28)
         machine.frame = NSRect(x: 10, y: 64, width: max(0, bounds.width-20), height: 56)
         let top = machine.frame.maxY + 14
-        let rowHeight: CGFloat = 32, rowGap: CGFloat = 2, headerHeight: CGFloat = 34
+        let rowHeight: CGFloat = 34, rowGap: CGFloat = 2, headerHeight: CGFloat = 34
         let needed = CGFloat(pageRows.count) * (rowHeight + rowGap) + CGFloat(headers.count) * headerHeight
         // The traffic panel gives way before the navigation is squeezed.
         let withTelemetry = bounds.height - top - SidebarTelemetry.height - 16

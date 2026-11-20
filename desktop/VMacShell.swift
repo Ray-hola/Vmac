@@ -84,6 +84,15 @@ enum VMacPreference: String, CaseIterable {
     }
 }
 
+/// The line between the sidebar and the content is the faintest hairline;
+/// the sidebar's own tint does most of the dividing.
+final class VMacSplitView: NSSplitView {
+    override func drawDivider(in rect: NSRect) {
+        NSColor(white: 0, alpha: 0.06).setFill()
+        NSRect(x: rect.minX, y: rect.minY, width: 1, height: rect.height).fill()
+    }
+}
+
 enum VMacToastKind { case info, error }
 
 /// The rules for the toast over the guest. An error stays until it is

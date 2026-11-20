@@ -14,11 +14,10 @@ final class VMacToastView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerRadius = 16
-        layer?.borderWidth = 1
+        layer?.cornerRadius = 12
         alphaValue = 0
         isHidden = true
-        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.font = .systemFont(ofSize: 13)
         label.textColor = .white
         label.usesSingleLineMode = false
         label.cell?.wraps = true
@@ -28,42 +27,42 @@ final class VMacToastView: NSView {
         label.cell?.truncatesLastVisibleLine = true
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         icon.image = NSImage(systemSymbolName: "exclamationmark.circle.fill", accessibilityDescription: nil)
-        icon.contentTintColor = NSColor(srgbRed: 248 / 255, green: 113 / 255, blue: 113 / 255, alpha: 1)
+        icon.contentTintColor = CagePalette.dangerOnDark
         close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "关闭提示")
         close.isBordered = false
-        close.contentTintColor = NSColor(white: 1, alpha: 0.7)
+        close.contentTintColor = .white
         close.target = self; close.action = #selector(dismiss)
         for view in [icon, label, close] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
-        let oneLine = heightAnchor.constraint(equalToConstant: 32)
+        let oneLine = heightAnchor.constraint(equalToConstant: 40)
         oneLine.priority = .defaultLow
         NSLayoutConstraint.activate([
             oneLine,
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 32),
-            label.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 8),
-            label.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -8),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 40),
+            label.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 11),
+            label.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -11),
             widthAnchor.constraint(lessThanOrEqualToConstant: Self.maxWidth),
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 15), icon.heightAnchor.constraint(equalToConstant: 15),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             close.centerYAnchor.constraint(equalTo: centerYAnchor),
             close.widthAnchor.constraint(equalToConstant: 16), close.heightAnchor.constraint(equalToConstant: 16),
         ])
-        errorLayout = [label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7),
-                       label.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -8)]
-        infoLayout = [label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-                      label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16)]
+        errorLayout = [label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
+                       label.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -10)]
+        infoLayout = [label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+                      label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18)]
     }
     required init?(coder: NSCoder) { fatalError() }
     private var errorLayout: [NSLayoutConstraint] = []
     private var infoLayout: [NSLayoutConstraint] = []
     private static let maxWidth: CGFloat = 560
     /// What the icon, the close button and the margins take from the width.
-    private static let errorInset: CGFloat = 68, infoInset: CGFloat = 32
+    private static let errorInset: CGFloat = 79, infoInset: CGFloat = 36
 
     // In a narrow window the label gets less room than the widest toast
     // allows; it then has to wrap at the width it was really given.
@@ -76,8 +75,8 @@ final class VMacToastView: NSView {
 
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
-        layer?.backgroundColor = NSColor(srgbRed: 15 / 255, green: 17 / 255, blue: 21 / 255, alpha: 0.92).cgColor
-        layer?.borderColor = NSColor(white: 1, alpha: 0.12).cgColor
+        // Every toast is the same dark sheet; a failure adds a red mark.
+        layer?.backgroundColor = CagePalette.toast.cgColor
     }
     // An ordinary notice never takes clicks away from the guest underneath.
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -91,6 +90,7 @@ final class VMacToastView: NSView {
         let isError = model.kind == .error
         label.preferredMaxLayoutWidth = Self.maxWidth - (isError ? Self.errorInset : Self.infoInset)
         label.stringValue = model.text
+        needsDisplay = true
         toolTip = model.text
         icon.isHidden = !isError; close.isHidden = !isError
         NSLayoutConstraint.deactivate(isError ? infoLayout : errorLayout)

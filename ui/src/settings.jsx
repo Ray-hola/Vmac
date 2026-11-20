@@ -109,8 +109,8 @@ export function SettingsPanel({
       : draft[k] !== current[k],
   );
   const shows = (id) => (embedded ? embeddedSections.includes(id) : section === id);
-  // In VMac a switch is the platform's own control; see .vm-switch.
-  const nativeSwitch = embedded ? { switch: "", className: "vm-switch" } : {};
+  // In VMac every switch is drawn the same way; see .vm-switch.
+  const nativeSwitch = embedded ? { className: "vm-switch" } : {};
   const busy =
     Boolean(status.job?.running) || Boolean(status.storage_recovery?.required) || probing || submitting || Boolean(jobId);
   // Project folders of the other guest systems are always read directly.

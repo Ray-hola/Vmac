@@ -146,7 +146,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             preferredSidebarWidth = CGFloat(min(280, max(180, savedWidth)))
             let sidebar = CageGuestSidebar()
             sidebar.onSelect = { [weak self] destination in self?.selectGuestDestination(destination) }
-            let split = NSSplitView(frame: root.bounds)
+            let split = VMacSplitView(frame: root.bounds)
             split.isVertical = true
             split.dividerStyle = .thin
             sidebar.translatesAutoresizingMaskIntoConstraints = true
