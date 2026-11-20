@@ -580,8 +580,6 @@ final class CageGuestSidebar: NSView {
     private var pillAnimating = false
     private let settingsRow = GuestNavigationButton()
     private let telemetry=SidebarTelemetry(frame:.zero)
-    private var noticePopover: NSPopover?
-    private var noticeGeneration = 0
     override var isFlipped: Bool { true }
     init() {
         super.init(frame:.zero)
@@ -685,19 +683,6 @@ final class CageGuestSidebar: NSView {
     private func choose(_ id: String) {
         if id == "management" { showManagement(!managementExpanded) }
         else { onSelect?(id) }
-    }
-    func showNotice(_ text:String) {
-        noticePopover?.close();noticeGeneration += 1
-        guard !text.isEmpty,window?.isVisible == true else { return }
-        let label=NSTextField(wrappingLabelWithString:text)
-        label.font = .systemFont(ofSize:12);label.frame=NSRect(x:14,y:12,width:192,height:54)
-        let controller=NSViewController();controller.view=NSView(frame:NSRect(x:0,y:0,width:220,height:78));controller.view.addSubview(label)
-        let popover=NSPopover();popover.behavior = .transient;popover.animates = !SidebarMotion.reduced;popover.contentViewController=controller
-        noticePopover=popover;popover.show(relativeTo:logo.bounds,of:logo,preferredEdge:.maxX)
-        let generation=noticeGeneration
-        DispatchQueue.main.asyncAfter(deadline:.now()+4) { [weak self] in
-            if self?.noticeGeneration == generation { self?.noticePopover?.close() }
-        }
     }
     func select(_ requested:String) {
         let id = requested == "lifecycle" ? "desktop" : requested

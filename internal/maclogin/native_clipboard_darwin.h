@@ -23,6 +23,11 @@ static void clipboardNotice(NSString *message) {
     if (!showEmbeddedControls || !message.length) return;
     showEmbeddedControls([@"notice:" stringByAppendingString:message].UTF8String);
 }
+// A failure stays on screen until it is dismissed or replaced.
+static void clipboardError(NSString *message) {
+    if (!showEmbeddedControls || !message.length) return;
+    showEmbeddedControls([@"error:" stringByAppendingString:message].UTF8String);
+}
 
 static NSArray<NSURL *> *hostClipboardFiles(NSPasteboard *board) {
     if ([board.types containsObject:@"org.nspasteboard.ConcealedType"] ||
@@ -328,7 +333,7 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
             NSString *selection = [result[@"files"] isKindOfClass:NSString.class] ? result[@"files"] : nil;
             if (!client) return;
             client->_transferring = NO;
-            if (!selection) { clipboardNotice(failure); return; }
+            if (!selection) { clipboardError(failure); return; }
             if (!client->_connected || NSPasteboard.generalPasteboard.changeCount != revision) {
                 dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
                     clipboardFilesCommand(@[@"--connection", @"local", @"release", selection], NULL);
@@ -356,7 +361,7 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
             NSString *cache = [result[@"cache_id"] isKindOfClass:NSString.class] ? result[@"cache_id"] : @"";
             if (!client) return;
             client->_transferring = NO;
-            if (!paths.count) { clipboardNotice(failure); return; }
+            if (!paths.count) { clipboardError(failure); return; }
             NSPasteboard *board = NSPasteboard.generalPasteboard;
             NSMutableArray<NSURL *> *urls = [NSMutableArray arrayWithCapacity:paths.count];
             for (NSString *path in paths) if ([path isKindOfClass:NSString.class]) [urls addObject:[NSURL fileURLWithPath:path]];
@@ -543,7 +548,7 @@ static NSURL *unusedFileURL(NSURL *url) {
     if (--_remaining == 0 && _cache.length) clipboardCacheCommand(@"release", _cache);
     NSString *notice = error ? (_failure ?: @"有文件没能从客机拷出，请重试") :
         !_remaining ? [NSString stringWithFormat:@"已从客机拷出 %lu 项", (unsigned long)_names.count] : nil;
-    if (notice) dispatch_async(dispatch_get_main_queue(), ^{ clipboardNotice(notice); });
+    if (notice) dispatch_async(dispatch_get_main_queue(), ^{ if (error) clipboardError(notice); else clipboardNotice(notice); });
     completionHandler(error);
 }
 @end

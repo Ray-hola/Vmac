@@ -41,6 +41,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private var guestContent: NSView!
     private var guestSplitView: NSSplitView?
     private var vmacToolbar: VMacToolbarController?
+    private var toast: VMacToastView?
     private var preferredSidebarWidth: CGFloat = 220
     private var shell = VMacShellState()
     private var shellMenuItems: [VMacMenuKey: NSMenuItem] = [:]
@@ -164,6 +165,16 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
                 split.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             ])
             split.setPosition(preferredSidebarWidth, ofDividerAt: 0)
+            // Floats over the bottom of the content, above the page and the guest view alike.
+            let toast = VMacToastView()
+            toast.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(toast)
+            NSLayoutConstraint.activate([
+                toast.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+                toast.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
+                toast.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -32),
+            ])
+            self.toast = toast
             window.minSize = NSSize(width: 1000, height: 640)
         } else {
             root.addSubview(content)
@@ -428,11 +439,11 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         let folder = CageProfile.profileFolder(CageProfile.activeProfile)
         guard !FileManager.default.fileExists(atPath: folder.appendingPathComponent("macos-guest.json").path),
               !FileManager.default.fileExists(atPath: folder.appendingPathComponent("state/lima/mac/disk").path) else {
-            guestSidebar?.showNotice("请在虚拟机管理中切换")
+            toast?.show("请在虚拟机管理中切换", kind: .info)
             return
         }
         relaunchVMac(profile: CageProfile.defaultProfile) { [weak self] _, error in
-            if let error { self?.guestSidebar?.showNotice(error) }
+            if let error { self?.toast?.show(error, kind: .error) }
         }
     }
 
@@ -440,7 +451,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         #if CAGE_EMBEDDED_VM
         guard let action = sender.representedObject as? String else { return }
         if !action.withCString({ performEmbeddedUtility($0) }) {
-            guestSidebar?.showNotice("请先打开客机桌面")
+            toast?.show("请先打开客机桌面", kind: .info)
         }
         #endif
     }
@@ -454,14 +465,14 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         sender.state = enabled ? .on : .off
         UserDefaults.standard.set(enabled, forKey: "vmac.shareClipboardContent")
         publishWindowVisibility()
-        guestSidebar?.showNotice(enabled ? "客机桌面可见时，复制的文字、图片和文件会双向同步" : "剪贴板共享已关闭")
+        toast?.show(enabled ? "客机桌面可见时，复制的文字、图片和文件会双向同步" : "剪贴板共享已关闭", kind: .info)
     }
     @objc private func toggleHostInputMethod(_ sender: NSMenuItem) {
         let enabled = sender.state != .on
         sender.state = enabled ? .on : .off
         UserDefaults.standard.set(enabled, forKey: "vmac.hostInputMethod")
         publishWindowVisibility()
-        guestSidebar?.showNotice(enabled ? "在客机里打字时使用 Mac 当前的输入法；客机请切换到英文（ABC）输入" : "已改用客机自己的输入法")
+        toast?.show(enabled ? "在客机里打字时使用 Mac 当前的输入法；客机请切换到英文（ABC）输入" : "已改用客机自己的输入法", kind: .info)
     }
 
     private func installVMacToolbar() {
@@ -517,7 +528,11 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     }
     fileprivate func embeddedControlsRequested(_ reason: String) {
         if reason.hasPrefix("notice:") {
-            guestSidebar?.showNotice(String(reason.dropFirst("notice:".count)))
+            toast?.show(String(reason.dropFirst("notice:".count)), kind: .info)
+            return
+        }
+        if reason.hasPrefix("error:") {
+            toast?.show(String(reason.dropFirst("error:".count)), kind: .error)
             return
         }
         showGuestControls()
