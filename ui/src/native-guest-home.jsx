@@ -12,6 +12,7 @@ import { DiskCapacity, GuestInputSources, GuestLoginDetails, GuestTimezone, VMPr
 import { ChecksPage, protectionText, protectionTone, useVMacProtection } from "./vmac-checks";
 import { GuestOverview, guestPhase } from "./vmac-overview";
 import { PageHeader, StatusChip } from "./vmac-ui";
+import "./vmac-theme.css";
 import "./native-guest-home.css";
 
 const titles = {
