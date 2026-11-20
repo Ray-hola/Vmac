@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"unicode"
 
 	"al.essio.dev/pkg/shellescape"
+	"github.com/Ray-hola/Vmac/internal/diagnostics"
 	"github.com/Ray-hola/Vmac/internal/version"
 )
 
@@ -211,7 +213,8 @@ func (s *Server) macOSNativeDrop(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
 	defer cancel()
 	folder, kind := desktop, "desktop"
-	if result, err := s.macOSClipboardRequest(ctx, map[string]any{"operation": "drop-target", "x": *input.X, "y": *input.Y}); err == nil {
+	result, err := s.macOSClipboardRequest(ctx, map[string]any{"operation": "drop-target", "x": *input.X, "y": *input.Y})
+	if err == nil {
 		if value, _ := result["path"].(string); validGuestFolder(value) {
 			folder, kind = value, "folder"
 			if value == desktop {
@@ -219,6 +222,7 @@ func (s *Server) macOSNativeDrop(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	_ = diagnostics.New(s.profile).Record("info", "native-drop", fmt.Sprintf("x=%.3f y=%.3f target=%s guest_error=%t", *input.X, *input.Y, kind, err != nil))
 	label := path.Base(folder)
 	if kind == "desktop" {
 		label = "桌面"

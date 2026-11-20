@@ -243,6 +243,8 @@ private final class Stream: @unchecked Sendable {
 // Where a file dropped from the Mac belongs: the Finder window under the drop
 // point, otherwise the Desktop. Coordinates are fractions of the main display
 // measured from its top-left corner, as the host sees the guest picture.
+// Other applications' window lists need Screen Recording permission, so Finder
+// names its own windows and the system hit test only confirms which is on top.
 private func dropTarget(_ request: [String: Any]) throws -> [String: Any] {
     guard let x = request["x"] as? Double, let y = request["y"] as? Double,
           (0...1).contains(x), (0...1).contains(y) else { throw ClipboardFailure("invalid_point") }
@@ -250,21 +252,23 @@ private func dropTarget(_ request: [String: Any]) throws -> [String: Any] {
     let frame = onGUI { NSScreen.screens.first?.frame } ?? .zero
     guard frame.width > 0, frame.height > 0 else { return desktop }
     let point = CGPoint(x: frame.minX + x * frame.width, y: y * frame.height)
-    guard let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first?.processIdentifier,
-          let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return desktop }
-    // The list runs front to back; the first ordinary window under the point decides.
-    for window in windows where (window[kCGWindowLayer as String] as? Int) == 0 {
-        guard let bounds = window[kCGWindowBounds as String] as? NSDictionary,
-              let rect = CGRect(dictionaryRepresentation: bounds), rect.contains(point) else { continue }
-        guard (window[kCGWindowOwnerPID as String] as? pid_t) == finder else { return desktop }
-        return finderFolder(at: point).map { ["path": $0, "kind": "finder"] } ?? desktop
-    }
-    return desktop
+    let windows = finderWindows()
+    guard let front = windows.first(where: { $0.bounds.contains(point) }) else { return desktop }
+    let (top, numbers) = onGUI { (NSWindow.windowNumber(at: NSPoint(x: point.x, y: frame.maxY - point.y), belowWindowWithWindowNumber: 0),
+                                  Set((NSWindow.windowNumbers(options: .allApplications) ?? []).map(\.intValue))) }
+    if let hit = windows.first(where: { $0.id == top && $0.bounds.contains(point) }) { return ["path": hit.path, "kind": "finder"] }
+    // Finder window ids are system window numbers, so another application's
+    // window on top means the drop did not land in Finder.
+    if top > 0, windows.contains(where: { numbers.contains($0.id) }) { return desktop }
+    return ["path": front.path, "kind": "finder"]
 }
 
-// Finder reports its windows front to back with bounds in the same top-left
-// coordinates. Asking needs the user's one-time consent to control Finder.
-private func finderFolder(at point: CGPoint) -> String? {
+private struct FinderWindow { let id: Int; let bounds: CGRect; let path: String }
+
+// Finder lists its windows front to back with bounds in the same top-left
+// coordinates. The first request waits for the user's one-time consent to
+// control Finder, so it runs in osascript rather than on the GUI thread.
+private func finderWindows() -> [FinderWindow] {
     let source = """
     tell application "Finder"
         set out to ""
@@ -272,28 +276,33 @@ private func finderFolder(at point: CGPoint) -> String? {
             try
                 set b to bounds of w
                 set p to POSIX path of (target of w as alias)
-                set out to out & (item 1 of b) & "," & (item 2 of b) & "," & (item 3 of b) & "," & (item 4 of b) & tab & p & linefeed
+                set out to out & (id of w) & "," & (item 1 of b) & "," & (item 2 of b) & "," & (item 3 of b) & "," & (item 4 of b) & tab & p & linefeed
             end try
         end repeat
         return out
     end tell
     """
-    let output: String? = onGUI {
-        var error: NSDictionary?
-        return NSAppleScript(source: source)?.executeAndReturnError(&error).stringValue
-    }
-    for line in (output ?? "").split(separator: "\n") {
+    let process = Process(), output = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    process.arguments = ["-e", source]
+    process.standardInput = FileHandle.nullDevice; process.standardOutput = output; process.standardError = FileHandle.nullDevice
+    guard (try? process.run()) != nil else { return [] }
+    let timeout = DispatchWorkItem { if process.isRunning { process.terminate() } }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 70, execute: timeout)
+    defer { timeout.cancel() }
+    let data = (try? output.fileHandleForReading.readToEnd()) ?? Data()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0, data.count <= 1 << 20 else { return [] }
+    return String(decoding: data, as: UTF8.self).split(separator: "\n").compactMap { line in
         let parts = line.split(separator: "\t", maxSplits: 1)
-        let edges = parts.first?.split(separator: ",").compactMap { Double($0) } ?? []
-        guard parts.count == 2, edges.count == 4 else { continue }
-        let rect = CGRect(x: edges[0], y: edges[1], width: edges[2] - edges[0], height: edges[3] - edges[1])
-        let path = String(parts[1])
+        let fields = parts.first?.split(separator: ",").compactMap { Double($0) } ?? []
+        guard parts.count == 2, fields.count == 5 else { return nil }
+        var path = String(parts[1])
         var directory: ObjCBool = false
-        if rect.contains(point), path.hasPrefix("/"), FileManager.default.fileExists(atPath: path, isDirectory: &directory), directory.boolValue {
-            return path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
-        }
+        guard path.hasPrefix("/"), FileManager.default.fileExists(atPath: path, isDirectory: &directory), directory.boolValue else { return nil }
+        if path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+        return FinderWindow(id: Int(fields[0]), bounds: CGRect(x: fields[1], y: fields[2], width: fields[3] - fields[1], height: fields[4] - fields[2]), path: path)
     }
-    return nil
 }
 
 private final class SnapshotDelivery: @unchecked Sendable {
