@@ -21,7 +21,7 @@
 .native-guest-home { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 40px 48px; background: var(--paper); color: var(--ink); font: 14px/1.6 var(--ui-font-family); }
 .vm-header { position: sticky; top: 0; z-index: 6; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 -40px 20px; padding: 30px 40px 16px; background: color-mix(in srgb, var(--paper) 94%, transparent); backdrop-filter: saturate(1.2) blur(14px); border-bottom: 1px solid transparent; transition: padding var(--vm-mid) var(--vm-ease), border-color var(--vm-mid); }
 .vm-header-text { min-width: 0; }
-.vm-header h1 { margin: 0; font-size: 26px; font-weight: 650; line-height: 1.2; letter-spacing: -.02em; transition: font-size var(--vm-mid) var(--vm-ease); }
+.vm-header h1 { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: -.02em; transition: font-size var(--vm-mid) var(--vm-ease); }
 .vm-header p { margin: 6px 0 0; max-height: 2.4em; overflow: hidden; color: var(--muted); font-size: 13px; transition: opacity var(--vm-mid), max-height var(--vm-mid) var(--vm-ease), margin var(--vm-mid); }
 .vm-header-aside { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding-bottom: 2px; }
 .native-guest-home[data-scrolled] .vm-header { padding-top: 14px; padding-bottom: 12px; border-bottom-color: var(--line); }
@@ -46,10 +46,13 @@
 
 /* ── Controls ───────────────────────────────────────────── */
 .vmac-theme button, .vmac-theme input, .vmac-theme select, .vmac-theme textarea { font-family: var(--ui-font-family); }
-.native-guest-home button { border-radius: 9px; transition: background var(--vm-fast), border-color var(--vm-fast), color var(--vm-fast), box-shadow var(--vm-mid), transform var(--vm-fast) var(--vm-ease); }
+.native-guest-home button { border-radius: var(--radius-control); transition: background var(--vm-fast), border-color var(--vm-fast), color var(--vm-fast), box-shadow var(--vm-mid), transform var(--vm-fast) var(--vm-ease); }
 .native-guest-home button:active:not(:disabled) { transform: scale(.97); }
 .native-guest-home button.primary { background: var(--button); color: var(--button-ink); border-color: var(--button); }
 .native-guest-home button.primary:hover:not(:disabled) { background: var(--button-hover); border-color: var(--button-hover); }
+.native-guest-home button.primary:active:not(:disabled) { background: var(--button-active); border-color: var(--button-active); }
+.vm-actions button:not(.large) { min-height: 32px; }
+.vmac-theme :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 1px; }
 .native-guest-home button.large { min-height: 40px; padding: 8px 18px; font-weight: 600; }
 .native-guest-home button.vm-quiet { border-color: transparent; background: transparent; color: var(--muted); }
 .native-guest-home button.vm-quiet:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
@@ -67,13 +70,13 @@
 .vm-chip { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 4px 11px 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 10%, transparent); color: var(--ink); font-size: 12px; font-weight: 550; line-height: 1.5; white-space: nowrap; transition: background var(--vm-mid), color var(--vm-mid); }
 .vm-chip i { flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .6; color: var(--muted); }
 .vm-chip.ok { background: var(--success-soft); color: var(--success); }
-.vm-chip.ok i { background: var(--success); opacity: 1; }
-.vm-chip.busy { background: var(--warn-soft); color: var(--warn); }
-.vm-chip.busy i { background: var(--warn); color: var(--warn); opacity: 1; animation: vm-pulse 1.4s ease-in-out infinite; }
-.vm-chip.warn { background: var(--accent-soft); color: var(--accent); }
-.vm-chip.warn i { background: var(--accent); opacity: 1; }
+.vm-chip.ok i { background: var(--ok-dot); opacity: 1; }
+.vm-chip.busy { background: var(--accent-soft); color: var(--accent-text); }
+.vm-chip.busy i { background: var(--accent); color: var(--accent-text); opacity: 1; animation: vm-pulse 1.4s ease-in-out infinite; }
+.vm-chip.warn { background: var(--warn-soft); color: var(--warn); }
+.vm-chip.warn i { background: var(--warn-dot); opacity: 1; }
 .vm-chip.bad { background: var(--danger-soft); color: var(--danger); }
-.vm-chip.bad i { background: var(--danger); opacity: 1; }
+.vm-chip.bad i { background: var(--bad-dot); opacity: 1; }
 
 /* Segmented control */
 .vm-seg { position: relative; display: inline-flex; max-width: 100%; gap: 2px; padding: 3px; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--well); overflow-x: auto; scrollbar-width: none; }
@@ -82,10 +85,10 @@
 .native-guest-home .vm-seg button:hover:not(:disabled), .vm-seg button:hover:not(:disabled) { background: transparent; color: var(--ink); }
 .vm-seg button[aria-pressed="true"] { color: var(--ink); }
 .vm-seg-badge { min-width: 18px; padding: 0 5px; border-radius: 9px; background: color-mix(in srgb, var(--muted) 14%, transparent); font-size: 11px; line-height: 16px; font-variant-numeric: tabular-nums; }
-.vm-seg button[aria-pressed="true"] .vm-seg-badge { background: var(--accent-soft); color: var(--accent); }
+.vm-seg button[aria-pressed="true"] .vm-seg-badge { background: var(--accent-soft); color: var(--accent-text); }
 
 /* Card */
-.vm-card { position: relative; max-width: 1040px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.vm-card { position: relative; max-width: 1040px; padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--radius-group); background: var(--card); }
 .vm-card + .vm-card, .vm-tabpanel > .vm-card + .vm-card { margin-top: 16px; }
 .vm-tiles > .vm-card { margin-top: 0; }
 .vm-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
@@ -93,7 +96,7 @@
 .vm-card-head p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .vm-card-head > button { flex-shrink: 0; }
 .vm-card-title { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
-.vm-card-icon { flex-shrink: 0; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+.vm-card-icon { flex-shrink: 0; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); }
 .vm-figure { flex-shrink: 0; display: flex; align-items: baseline; gap: 4px; color: var(--ink); }
 .vm-figure strong { font-size: 30px; font-weight: 650; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; animation: vm-fade var(--vm-slow); }
 .vm-figure small { color: var(--muted); font-size: 13px; }
@@ -125,12 +128,12 @@
 .vm-steps li.done { color: var(--ink); }
 .vm-steps li.done .vm-step-dot { border-color: var(--accent); background: var(--accent); color: #fff; animation: vm-pop var(--vm-mid) var(--vm-ease); }
 .vm-steps li.active { color: var(--ink); font-weight: 600; }
-.vm-steps li.active .vm-step-dot { border-color: var(--accent); color: var(--accent); }
-.vm-step-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); color: var(--accent); animation: vm-pulse 1.4s ease-in-out infinite; }
+.vm-steps li.active .vm-step-dot { border-color: var(--accent); color: var(--accent-text); }
+.vm-step-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); color: var(--accent-text); animation: vm-pulse 1.4s ease-in-out infinite; }
 .vm-steps li.failed { color: var(--danger); }
 .vm-steps li.failed .vm-step-dot { border-color: var(--danger); background: var(--danger); color: var(--paper); }
 .vm-steps li.next { color: var(--accent-text); font-weight: 600; }
-.vm-steps li.next .vm-step-dot { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.vm-steps li.next .vm-step-dot { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
 .vm-boot { display: grid; justify-items: center; gap: 6px; max-width: 620px; margin: 0 auto; padding: 11vh 0 0; text-align: center; animation: vm-fade var(--vm-slow) var(--vm-ease) both; }
 .vm-boot-logo { width: 56px; height: 56px; margin-bottom: 12px; }
 .vm-boot h2 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.3; }
@@ -143,13 +146,13 @@
 .vm-tile-icon { flex-shrink: 0; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--well); color: var(--muted); transition: background var(--vm-mid), color var(--vm-mid); }
 .vm-tile.ok .vm-tile-icon { background: var(--success-soft); color: var(--success); }
 .vm-tile.busy .vm-tile-icon { background: var(--warn-soft); color: var(--warn); }
-.vm-tile.warn .vm-tile-icon { background: var(--accent-soft); color: var(--accent); }
+.vm-tile.warn .vm-tile-icon { background: var(--accent-soft); color: var(--accent-text); }
 .vm-tile-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .vm-tile-text small { color: var(--muted); font-size: 12px; }
 .vm-tile-text strong { font-size: 15px; font-weight: 620; overflow-wrap: anywhere; }
 .vm-tile-text span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .vm-tile-arrow { flex-shrink: 0; align-self: center; color: var(--muted); opacity: .45; transition: transform var(--vm-mid) var(--vm-ease), opacity var(--vm-mid), color var(--vm-mid); }
-.vm-tile:hover .vm-tile-arrow { transform: translateX(3px); opacity: 1; color: var(--accent); }
+.vm-tile:hover .vm-tile-arrow { transform: translateX(3px); opacity: 1; color: var(--accent-text); }
 
 /* ── VM management ──────────────────────────────────────── */
 .vm-grow { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
@@ -163,7 +166,7 @@
 .vm-stepper span { padding-right: 4px; color: var(--muted); font-size: 12px; }
 .vm-presets { display: inline-flex; gap: 6px; }
 .native-guest-home .vm-presets button { min-height: 28px; padding: 3px 11px; border-radius: 999px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.native-guest-home .vm-presets button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); color: var(--accent); }
+.native-guest-home .vm-presets button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); color: var(--accent-text); }
 .vm-grow > button.primary { margin-left: auto; }
 .vm-inline-form { display: flex; align-items: center; gap: 8px; margin-top: 14px; animation: vm-slide-down var(--vm-mid) var(--vm-ease); }
 .native-guest-home .vm-inline-form input { flex: 1; min-width: 0; min-height: 34px; padding: 0 12px; border: 1px solid var(--line); background: var(--input); }
@@ -174,7 +177,7 @@
 .vm-profiles li:hover { border-color: color-mix(in srgb, var(--ink) 18%, var(--line)); }
 .vm-profiles li.active { border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); background: var(--accent-soft); }
 .vm-profile-icon { flex-shrink: 0; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--well); color: var(--muted); }
-.vm-profiles li.active .vm-profile-icon { background: var(--card); color: var(--accent); }
+.vm-profiles li.active .vm-profile-icon { background: var(--card); color: var(--accent-text); }
 .vm-profile-text { flex: 1; min-width: 0; }
 .vm-profile-text strong { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vm-profile-text small { display: block; color: var(--muted); font-size: 12px; }
@@ -192,7 +195,7 @@
 .vm-stat span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vm-stat.ok strong, .vm-stat.ok small svg { color: var(--success); }
 .vm-stat.busy strong, .vm-stat.busy small svg { color: var(--warn); }
-.vm-stat.warn strong, .vm-stat.warn small svg { color: var(--accent); }
+.vm-stat.warn strong, .vm-stat.warn small svg { color: var(--accent-text); }
 .vm-result-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: 14px; animation: vm-rise var(--vm-slow) var(--vm-ease); }
 .vm-result-row > span { padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
 .vm-result-row .ok { background: var(--success-soft); color: var(--success); }
@@ -245,7 +248,7 @@
 .vm-site-dot.failed { background: var(--danger); }
 .vm-site-group { padding: 13px 0 16px; border-top: 1px solid var(--line); }
 .vm-site-group header { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 5px 10px; margin-bottom: 10px; }
-.vm-site-group header > svg { color: var(--accent); }
+.vm-site-group header > svg { color: var(--accent-text); }
 .vm-site-group h3 { margin: 0; font-size: 15px; }
 .vm-site-group header small { color: var(--muted); font-size: 12px; }
 .vm-site-group header button { min-height: 28px; padding: 3px 8px; font-size: 12px; }
@@ -279,7 +282,7 @@
 .vmac-theme .settings-page { animation: vm-fade .2s ease-out; }
 .vmac-theme .settings-page .settings-main { animation: vm-slide-in .28s var(--vm-ease); }
 .vmac-theme .settings-page .settings-sidebar nav button { transition: background var(--vm-fast), color var(--vm-fast); }
-.vmac-theme .settings-page .settings-sidebar nav button.selected { color: var(--accent); }
+.vmac-theme .settings-page .settings-sidebar nav button.selected { color: var(--accent-text); }
 .vmac-theme .settings-content > * { animation: vm-fade .22s var(--vm-ease); }
 .native-guest-home .proxy-manager { min-width: 0; width: 100%; max-width: 1040px; }
 .native-guest-home :is(.proxy-node, .proxy-source, .proxy-help, .proxy-route) { border-radius: 12px; }
@@ -289,7 +292,7 @@
 .native-guest-home .proxy-help { animation: vm-slide-down var(--vm-mid) var(--vm-ease); background: var(--card); }
 .native-guest-home .proxy-badge.online { color: var(--success); }
 .native-guest-home .proxy-notice { animation: vm-rise var(--vm-slow) var(--vm-ease); }
-.native-guest-home .proxy-notice .text-button { margin-left: 6px; color: var(--accent); }
+.native-guest-home .proxy-notice .text-button { margin-left: 6px; color: var(--accent-text); }
 .native-guest-home .proxy-import { animation: vm-slide-down var(--vm-mid) var(--vm-ease); }
 
 /* Setup wizard */
