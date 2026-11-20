@@ -252,31 +252,34 @@ private func dropTarget(_ request: [String: Any]) throws -> [String: Any] {
     let frame = onGUI { NSScreen.screens.first?.frame } ?? .zero
     guard frame.width > 0, frame.height > 0 else { return desktop }
     let point = CGPoint(x: frame.minX + x * frame.width, y: y * frame.height)
-    let windows = finderWindows()
-    guard let front = windows.first(where: { $0.bounds.contains(point) }) else { return desktop }
-    let (top, numbers) = onGUI { (NSWindow.windowNumber(at: NSPoint(x: point.x, y: frame.maxY - point.y), belowWindowWithWindowNumber: 0),
-                                  Set((NSWindow.windowNumbers(options: .allApplications) ?? []).map(\.intValue))) }
-    if let hit = windows.first(where: { $0.id == top && $0.bounds.contains(point) }) { return ["path": hit.path, "kind": "finder"] }
-    // Finder window ids are system window numbers, so another application's
-    // window on top means the drop did not land in Finder.
-    if top > 0, windows.contains(where: { numbers.contains($0.id) }) { return desktop }
-    return ["path": front.path, "kind": "finder"]
+    guard let windows = finderWindows() else { GuestDiagnostic.record("clipboard", "drop_finder_query_failed"); return desktop }
+    // The window the system hit-tests there wins when it is a Finder window;
+    // otherwise the frontmost Finder window under the point does. Other
+    // applications' windows are not visible to the agent.
+    let top = onGUI { NSWindow.windowNumber(at: NSPoint(x: point.x, y: frame.maxY - point.y), belowWindowWithWindowNumber: 0) }
+    let hit = windows.first(where: { $0.id == top && $0.bounds.contains(point) }) ?? windows.first(where: { $0.bounds.contains(point) })
+    let topKind = windows.contains(where: { $0.id == top }) ? "finder" : top > 0 ? "other" : "none"
+    GuestDiagnostic.record("clipboard", "drop_finder_windows_\(windows.count)_\(hit == nil ? "miss" : "hit")_top_\(topKind)")
+    guard let hit else { return desktop }
+    return ["path": hit.path, "kind": "finder"]
 }
 
 private struct FinderWindow { let id: Int; let bounds: CGRect; let path: String }
 
 // Finder lists its windows front to back with bounds in the same top-left
-// coordinates. The first request waits for the user's one-time consent to
-// control Finder, so it runs in osascript rather than on the GUI thread.
-private func finderWindows() -> [FinderWindow] {
+// coordinates, and each folder as a percent-encoded file URL so the output
+// stays ASCII whatever the user's text encoding. The first request waits for
+// the user's one-time consent to control Finder, so it runs in osascript
+// rather than on the GUI thread. Nil means Finder could not be asked.
+private func finderWindows() -> [FinderWindow]? {
     let source = """
     tell application "Finder"
         set out to ""
         repeat with w in (every Finder window)
             try
                 set b to bounds of w
-                set p to POSIX path of (target of w as alias)
-                set out to out & (id of w) & "," & (item 1 of b) & "," & (item 2 of b) & "," & (item 3 of b) & "," & (item 4 of b) & tab & p & linefeed
+                set u to URL of (target of w)
+                set out to out & (id of w) & "," & (item 1 of b) & "," & (item 2 of b) & "," & (item 3 of b) & "," & (item 4 of b) & tab & u & linefeed
             end try
         end repeat
         return out
@@ -286,23 +289,24 @@ private func finderWindows() -> [FinderWindow] {
     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
     process.arguments = ["-e", source]
     process.standardInput = FileHandle.nullDevice; process.standardOutput = output; process.standardError = FileHandle.nullDevice
-    guard (try? process.run()) != nil else { return [] }
+    guard (try? process.run()) != nil else { return nil }
     let timeout = DispatchWorkItem { if process.isRunning { process.terminate() } }
     DispatchQueue.global().asyncAfter(deadline: .now() + 70, execute: timeout)
     defer { timeout.cancel() }
     let data = (try? output.fileHandleForReading.readToEnd()) ?? Data()
     process.waitUntilExit()
-    guard process.terminationStatus == 0, data.count <= 1 << 20 else { return [] }
-    return String(decoding: data, as: UTF8.self).split(separator: "\n").compactMap { line in
+    guard process.terminationStatus == 0, data.count <= 1 << 20 else { return nil }
+    let lines = String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline)
+    let windows = lines.compactMap { line -> FinderWindow? in
         let parts = line.split(separator: "\t", maxSplits: 1)
-        let fields = parts.first?.split(separator: ",").compactMap { Double($0) } ?? []
-        guard parts.count == 2, fields.count == 5 else { return nil }
-        var path = String(parts[1])
+        let fields = parts.first?.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) } ?? []
+        guard parts.count == 2, fields.count == 5, let url = URL(string: String(parts[1]).trimmingCharacters(in: .whitespaces)), url.isFileURL else { return nil }
         var directory: ObjCBool = false
-        guard path.hasPrefix("/"), FileManager.default.fileExists(atPath: path, isDirectory: &directory), directory.boolValue else { return nil }
-        if path.count > 1 && path.hasSuffix("/") { path.removeLast() }
-        return FinderWindow(id: Int(fields[0]), bounds: CGRect(x: fields[1], y: fields[2], width: fields[3] - fields[1], height: fields[4] - fields[2]), path: path)
+        guard url.path.hasPrefix("/"), FileManager.default.fileExists(atPath: url.path, isDirectory: &directory), directory.boolValue else { return nil }
+        return FinderWindow(id: Int(fields[0]), bounds: CGRect(x: fields[1], y: fields[2], width: fields[3] - fields[1], height: fields[4] - fields[2]), path: url.path)
     }
+    if windows.count < lines.count { GuestDiagnostic.record("clipboard", "drop_finder_unparsed_\(lines.count - windows.count)_of_\(lines.count)") }
+    return windows
 }
 
 private final class SnapshotDelivery: @unchecked Sendable {
