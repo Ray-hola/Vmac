@@ -29,6 +29,12 @@ enum VMacShellTests {
         let stopped = VMacGuestActions(running: false, ready: false)
         precondition(!stopped.upload && !stopped.lifecycle)
 
+        let detail = VMacStatusDetail(body: ["network": "外网已放行", "exit": "203.0.113.7 · 日本", "disk": "64 GiB", "tone": "ok"])
+        precondition(detail.network == "外网已放行" && detail.exit == "203.0.113.7 · 日本" && detail.disk == "64 GiB")
+        precondition(VMacStatusDetail(body: [:]) == VMacStatusDetail(network: "—", exit: "—", disk: "—"), "missing fields read as a dash")
+        precondition(VMacStatusDetail(body: ["network": "", "disk": 64]).network == "—", "an empty or mistyped field reads as a dash")
+        precondition(VMacStatusDetail(body: ["network": "", "disk": 64]).disk == "—")
+
         let suite = "cn.ovenray.vmac.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }

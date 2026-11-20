@@ -21,6 +21,20 @@ export function shellStatus(status, { setup = false, now = Date.now() } = {}) {
   return { tone, detail };
 }
 
+// Whole gibibytes read as "64"; anything else keeps two decimals.
+export const gib = bytes => Number((bytes / 2 ** 30).toFixed(bytes % 2 ** 30 ? 2 : 0));
+
+// The three lines of the popover behind the status pill: the network gate,
+// where traffic leaves, and the size of the guest's disk.
+export function statusDetail(status, disk, now = Date.now()) {
+  const { ip, country, city } = status?.location || {};
+  return {
+    network: networkState(status, now).label,
+    exit: ip ? [ip, country, city].filter(Boolean).join(" · ") : "尚未取得出口信息",
+    disk: disk?.bytes ? `${gib(disk.bytes)} GiB` : "—",
+  };
+}
+
 // Whether opening VMac should start the guest by itself. Only a guest that is
 // installed, stopped and in no need of attention is started; the caller asks
 // once, with the first status of a launch.

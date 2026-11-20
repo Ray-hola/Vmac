@@ -38,6 +38,24 @@ struct VMacStatus: Equatable {
     }
 }
 
+/// The lines of the popover behind the status pill. A field the page did not
+/// send reads as a dash.
+struct VMacStatusDetail: Equatable {
+    let network: String
+    let exit: String
+    let disk: String
+    init(network: String, exit: String, disk: String) {
+        self.network = network; self.exit = exit; self.disk = disk
+    }
+    init(body: [String: Any]) {
+        func text(_ key: String) -> String {
+            guard let value = body[key] as? String, !value.isEmpty else { return "—" }
+            return value
+        }
+        self.init(network: text("network"), exit: text("exit"), disk: text("disk"))
+    }
+}
+
 /// Which toolbar actions a guest in this state can take. Sending files needs
 /// a guest that is ready; restarting or stopping only needs it to be running,
 /// so a guest stuck while connecting can still be dealt with.

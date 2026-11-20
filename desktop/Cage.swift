@@ -489,7 +489,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private func installVMacToolbar() {
         let toolbar = VMacToolbarController()
         toolbar.onToggleControlCenter = { [weak self] in self?.toggleControlCenter() }
-        toolbar.onShowOverview = { [weak self] in self?.selectGuestDestination("lifecycle") }
+        toolbar.onNavigate = { [weak self] destination in self?.selectGuestDestination(destination) }
         #if CAGE_EMBEDDED_VM
         toolbar.onUpload = { _ = "upload".withCString { performEmbeddedUtility($0) } }
         #endif
@@ -870,6 +870,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
                 setup: body["setup"] as? Bool ?? false, activity: body["activity"] as? String ?? "")
             vmacToolbar?.update(VMacStatus(name: activeProfileName(), tone: body["tone"] as? String ?? "idle",
                                            detail: body["detail"] as? String ?? ""))
+            vmacToolbar?.update(detail: VMacStatusDetail(body: body))
             let running = body["running"] as? Bool ?? false, ready = body["ready"] as? Bool ?? false
             vmacToolbar?.setGuestActions(VMacGuestActions(running: running, ready: ready))
             // A desktop that is already showing stays up for as long as the guest runs.

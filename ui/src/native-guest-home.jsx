@@ -5,7 +5,7 @@ import { useAccount } from "./account";
 import { requestMacOSRecovery } from "./macos-recovery";
 import { Modal } from "./modal";
 import { networkState } from "./safety-state.mjs";
-import { autoStartEnabled, opensDesktop, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
+import { autoStartEnabled, opensDesktop, shellStatus, shouldAutoStart, statusDetail } from "./vmac-shell.mjs";
 import { embeddedSections, pageFor, pages } from "./vmac-pages.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
@@ -33,6 +33,7 @@ export function NativeGuestHome({ setup = null }) {
   const [settingsVersion, setSettingsVersion] = useState(0);
   const [profile, setProfile] = useState("");
   const [disk, setDisk] = useState(null);
+  const diskSize = useRef(null);
   const [scrolled, setScrolled] = useState(false);
   const protection = useVMacProtection(page === "proxy" || page === "checks", status?.safety?.gate);
   const [error, setError] = useState("");
@@ -125,7 +126,7 @@ export function NativeGuestHome({ setup = null }) {
       busy: Boolean(next.job?.running),
       failed: Boolean(!next.job?.running && next.job?.error),
       activity: next.job?.running ? next.job.kind || "" : "",
-      network: networkState(next).label,
+      ...statusDetail(next, diskSize.current),
       ...shellStatus(next, { setup: setupActive.current }),
       destination: currentPage.current,
     });
@@ -157,7 +158,7 @@ export function NativeGuestHome({ setup = null }) {
           void native("showGuestControls").catch(() => {});
         }
         wasRunning = next.vm_running;
-        const key = JSON.stringify([setupActive.current, next.vm_running, next.ready, next.job?.running, next.job?.error, networkState(next).label, shellStatus(next, { setup: setupActive.current }).detail, currentPage.current]);
+        const key = JSON.stringify([setupActive.current, next.vm_running, next.ready, next.job?.running, next.job?.error, statusDetail(next, diskSize.current), shellStatus(next, { setup: setupActive.current }).detail, currentPage.current]);
         if (key !== lastNavigation) {
           lastNavigation = key;
           void publishNavigation(next).catch(() => {});
@@ -291,9 +292,14 @@ export function NativeGuestHome({ setup = null }) {
   const lifecycle = page === "overview";
   const installed = status?.guest_system === "macos";
   useEffect(() => {
-    if (!lifecycle || !installed || disk) return;
+    if (!installed || disk) return;
     api("/macos/disk").then(setDisk).catch(() => {});
-  }, [lifecycle, installed, Boolean(disk)]);
+  }, [installed, Boolean(disk)]);
+  // The toolbar's status popover shows the disk size too.
+  useEffect(() => {
+    diskSize.current = disk;
+    void publishNavigation(latest.current).catch(() => {});
+  }, [disk]);
   const network = status && networkState(status);
   const phase = status ? guestPhase(status, request) : "stopped";
   const issue = error || (!status?.job?.running && (status?.job?.error || (status?.vm_running && status?.environment_update_error)));

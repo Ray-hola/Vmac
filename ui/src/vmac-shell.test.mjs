@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { autoStartEnabled, bootView, opensDesktop, setAutoStart, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
+import { autoStartEnabled, bootView, opensDesktop, setAutoStart, shellStatus, shouldAutoStart, statusDetail } from "./vmac-shell.mjs";
 
 const now = Date.parse("2026-11-20T12:00:00Z");
 const later = "2026-11-20T12:10:00Z";
@@ -99,4 +99,19 @@ test("unreadable storage keeps the default", () => {
   const broken = { getItem() { throw new Error("denied"); }, setItem() { throw new Error("denied"); }, removeItem() { throw new Error("denied"); } };
   assert.equal(autoStartEnabled(broken), true);
   assert.doesNotThrow(() => setAutoStart(broken, false));
+});
+
+test("the status popover names the network gate, the exit and the disk", () => {
+  const value = { ...gate("open"), location: { ip: "203.0.113.7", country: "日本", city: "东京" } };
+  assert.deepEqual(statusDetail(value, { bytes: 64 * 2 ** 30 }, now),
+    { network: "外网已放行", exit: "203.0.113.7 · 日本 · 东京", disk: "64 GiB" });
+});
+test("the popover says so when there is no exit information", () => {
+  assert.equal(statusDetail(gate("closed"), { bytes: 2 ** 30 }, now).exit, "尚未取得出口信息");
+  assert.equal(statusDetail({ ...gate("open"), location: { ip: "203.0.113.7" } }, null, now).exit, "203.0.113.7");
+  assert.deepEqual(statusDetail(null, null, now), { network: "环境已停止", exit: "尚未取得出口信息", disk: "—" });
+});
+test("an unknown disk size is a dash", () => {
+  assert.equal(statusDetail(gate("open"), null, now).disk, "—");
+  assert.equal(statusDetail(gate("open"), { bytes: 96.5 * 2 ** 30 }, now).disk, "96.5 GiB");
 });

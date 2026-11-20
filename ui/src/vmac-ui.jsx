@@ -59,4 +59,4 @@ export function Toggle({ checked, onChange, label, disabled = false }) {
     disabled={disabled} onClick={() => onChange(!checked)}><span aria-hidden="true" /></button>;
 }
 
-export const gib = bytes => Number((bytes / 2 ** 30).toFixed(bytes % 2 ** 30 ? 2 : 0));
+export { gib } from "./vmac-shell.mjs";

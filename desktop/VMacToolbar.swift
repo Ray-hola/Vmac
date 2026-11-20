@@ -58,7 +58,7 @@ private final class VMacStatusPill: NSView {
         }
         label.attributedStringValue = text
         setAccessibilityLabel("客机状态：\(next.title)，\(next.detail)")
-        toolTip = "查看客机概览"
+        toolTip = "查看客机状态"
         // A slow breath marks work in progress.
         dot.removeAnimation(forKey: "breathe")
         if next.tone == .busy && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -80,11 +80,65 @@ private final class VMacStatusPill: NSView {
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
 }
 
+/// What the status pill opens: three facts about the guest, and the pages
+/// that say more about each.
+final class VMacStatusPopover: NSViewController {
+    var onNavigate: ((String) -> Void)?
+    private var detail = VMacStatusDetail(body: [:])
+    private let values = (0..<3).map { _ in NSTextField(labelWithString: "—") }
+    private static let rows = ["网络保护", "出口", "磁盘"]
+    private static let pages = [("概览", "overview"), ("代理线路", "proxy"), ("环境检测", "checks")]
+
+    override func loadView() {
+        let grid = NSGridView(views: zip(Self.rows, values).map { title, value in
+            let label = NSTextField(labelWithString: title)
+            label.font = .systemFont(ofSize: 12); label.textColor = CagePalette.muted
+            value.font = .systemFont(ofSize: 12, weight: .medium); value.textColor = CagePalette.ink
+            value.alignment = .right; value.lineBreakMode = .byTruncatingMiddle
+            value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            return [label, value]
+        })
+        grid.rowSpacing = 9; grid.columnSpacing = 16
+        grid.column(at: 0).xPlacement = .leading
+        grid.column(at: 1).xPlacement = .trailing
+        let line = NSBox(); line.boxType = .separator
+        let buttons = NSStackView(views: Self.pages.enumerated().map { index, page in
+            let button = NSButton(title: page.0, target: self, action: #selector(open(_:)))
+            button.bezelStyle = .rounded; button.controlSize = .small; button.tag = index
+            return button
+        })
+        buttons.distribution = .fillEqually; buttons.spacing = 8
+        let stack = NSStackView(views: [grid, line, buttons])
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
+        stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        var constraints = [stack.widthAnchor.constraint(equalToConstant: 320)]
+        for part in [grid, line, buttons] as [NSView] {
+            constraints.append(part.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32))
+        }
+        NSLayoutConstraint.activate(constraints)
+        view = stack
+        apply()
+    }
+    func update(_ next: VMacStatusDetail) {
+        guard next != detail else { return }
+        detail = next
+        if isViewLoaded { apply() }
+    }
+    private func apply() {
+        for (field, text) in zip(values, [detail.network, detail.exit, detail.disk]) {
+            field.stringValue = text
+            // A long exit is cut in the middle; the full text stays one hover away.
+            field.toolTip = text
+        }
+    }
+    @objc private func open(_ sender: NSButton) { onNavigate?(Self.pages[sender.tag].1) }
+}
+
 /// The window's unified toolbar: the control center switch, the guest's
 /// status, and the few guest actions that are always within reach.
-final class VMacToolbarController: NSObject, NSToolbarDelegate {
+final class VMacToolbarController: NSObject, NSToolbarDelegate, NSPopoverDelegate {
     var onToggleControlCenter: (() -> Void)?
-    var onShowOverview: (() -> Void)?
+    var onNavigate: ((String) -> Void)?
     var onUpload: (() -> Void)?
     var onFullScreen: (() -> Void)?
     var onRestart: (() -> Void)?
@@ -92,6 +146,9 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate {
 
     private let toolbar = NSToolbar(identifier: "VMacToolbar")
     private let pill = VMacStatusPill()
+    private let popover = NSPopover()
+    private let statusPopover = VMacStatusPopover()
+    private var popoverClosedAt: TimeInterval = 0
     private var items: [NSToolbarItem.Identifier: NSToolbarItem] = [:]
     private var controlCenterActive = true
     private var guestActions = VMacGuestActions(running: false, ready: false)
@@ -106,12 +163,21 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate {
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
-        pill.onClick = { [weak self] in self?.onShowOverview?() }
+        pill.onClick = { [weak self] in self?.toggleStatusPopover() }
+        popover.contentViewController = statusPopover
+        popover.behavior = .transient
+        popover.appearance = NSAppearance(named: .aqua)
+        popover.delegate = self
+        statusPopover.onNavigate = { [weak self] destination in
+            self?.popover.performClose(nil)
+            self?.onNavigate?(destination)
+        }
         window.titleVisibility = .hidden
         window.toolbarStyle = .unifiedCompact
         window.toolbar = toolbar
     }
     func update(_ status: VMacStatus) { pill.update(status) }
+    func update(detail: VMacStatusDetail) { statusPopover.update(detail) }
     func setControlCenterActive(_ active: Bool) {
         controlCenterActive = active
         refreshToggle()
@@ -121,6 +187,18 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate {
         items[Self.upload]?.isEnabled = actions.upload
         items[Self.more]?.isEnabled = actions.lifecycle
     }
+
+    private func toggleStatusPopover() {
+        // The click that dismisses the open popover also reaches the pill; it
+        // must not open the popover again.
+        guard !popover.isShown, ProcessInfo.processInfo.systemUptime - popoverClosedAt > 0.3 else {
+            popover.performClose(nil)
+            return
+        }
+        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        popover.show(relativeTo: pill.bounds, of: pill, preferredEdge: .minY)
+    }
+    func popoverDidClose(_ notification: Notification) { popoverClosedAt = ProcessInfo.processInfo.systemUptime }
 
     private func symbol(_ name: String, _ description: String, tint: NSColor? = nil) -> NSImage? {
         let image = NSImage(systemSymbolName: name, accessibilityDescription: description)
