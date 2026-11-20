@@ -44,6 +44,14 @@ enum VMacShellTests {
         precondition(vmacAppearanceName(for: "dark") == .darkAqua)
         precondition(vmacAppearanceName(for: nil) == nil && vmacAppearanceName(for: "system") == nil)
 
+        precondition(vmacAppearanceName(forSaved: ["mode": "dark"]) == .darkAqua, "the appearance picked in settings is honored")
+        precondition(vmacAppearanceName(forSaved: ["mode": "light"]) == .aqua)
+        precondition(vmacAppearanceName(forSaved: ["mode": "system"]) == nil && vmacAppearanceName(forSaved: [:]) == nil)
+
+        let fullScreen = vmacFullScreenOptions()
+        precondition(fullScreen.contains(.fullScreen) && fullScreen.contains(.autoHideToolbar) && fullScreen.contains(.autoHideMenuBar),
+                     "in full screen the toolbar hides until the pointer reaches the top edge")
+
         for mode in [VMacShellMode.desktop, .controlCenter] {
             let center = VMacMenuKeys.equivalent(for: .controlCenter, mode: mode)
             precondition(center.key == "," && center.modifiers == [.control, .command])

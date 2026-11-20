@@ -104,7 +104,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         if let path=Bundle.main.path(forResource:"VMac",ofType:"icns"),let icon=NSImage(contentsOfFile:path) { NSApp.applicationIconImage=icon }
         let appearance = UserDefaults.standard.dictionary(forKey: nativeVMWorkbench ? "vmac.windowAppearance" : "cage.windowAppearance") ?? [:]
         let mode = appearance["mode"] as? String ?? "system"
-        NSApp.appearance = nativeVMWorkbench ? vmacAppearance : mode == "system" ? nil : NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        NSApp.appearance = nativeVMWorkbench ? vmacAppearance(appearance) : mode == "system" ? nil : NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
         makeMenus()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 850), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = workbenchTitle
@@ -407,8 +407,12 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             item.keyEquivalentModifierMask = equivalent.modifiers
         }
     }
-    private var vmacAppearance: NSAppearance? {
-        vmacAppearanceName(for: UserDefaults.standard.string(forKey: "vmac.appearance")).flatMap { NSAppearance(named: $0) }
+    /// The settings page's choice of system, light or dark, for the whole app.
+    private func vmacAppearance(_ saved: [String: Any]) -> NSAppearance? {
+        vmacAppearanceName(forSaved: saved).flatMap { NSAppearance(named: $0) }
+    }
+    func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = []) -> NSApplication.PresentationOptions {
+        nativeVMWorkbench ? vmacFullScreenOptions() : proposedOptions
     }
 
     func splitViewDidResizeSubviews(_ notification: Notification) {
@@ -742,7 +746,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private func showError(_ text: String) { CageDiagnostics.record(text); loading.stringValue = text; loading.isHidden = false; retry.isHidden = false; webView.isHidden = true }
     private func applyAppearance(_ value: [String:Any]) {
         if nativeVMWorkbench {
-            NSApp.appearance = vmacAppearance
+            NSApp.appearance = vmacAppearance(value)
             window.backgroundColor = CagePalette.paper
             window.isOpaque = true
             backdrop.isHidden = true

@@ -28,3 +28,14 @@ test("no stylesheet keeps the retired palette", () => {
     assert.ok(!retired.test(text), `${file} still uses a retired color`);
   }
 });
+
+test("dark looks the same whether the system or the setting chose it", () => {
+  const values = text => text.slice(text.indexOf("{") + 1).replace(/\s+/g, " ").trim();
+  const chosen = css.slice(css.indexOf(':root.vmac-theme[data-vmac-appearance="dark"]')).split("}")[0];
+  const system = css.slice(css.indexOf(':root.vmac-theme:not([data-vmac-appearance="light"])')).split("}")[0];
+  assert.equal(values(system), values(chosen));
+});
+test("the appearance setting reaches the VMac theme", () => {
+  const source = readFileSync(new URL("./appearance.jsx", import.meta.url), "utf8");
+  assert.match(source, /dataset\.vmacAppearance = variant/);
+});

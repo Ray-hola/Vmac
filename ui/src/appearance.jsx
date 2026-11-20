@@ -89,6 +89,8 @@ export function AppearanceProvider({ children }) {
       appearance.pointerCursors ? "pointer" : "default",
     );
     root.dataset.theme = variant;
+    // VMac's own theme follows the same resolved choice (vmac-theme.css).
+    if (window.cageNativeVMWorkbench) root.dataset.vmacAppearance = variant;
     root.dataset.translucent = String(!theme.opaqueWindows);
     root.dataset.fontSmoothing = String(appearance.fontSmoothing);
     root.dataset.reducedMotion = String(

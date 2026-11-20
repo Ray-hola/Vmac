@@ -81,6 +81,17 @@ func vmacAppearanceName(for setting: String?) -> NSAppearance.Name? {
     }
 }
 
+/// The appearance saved by the settings page ("mode": system, light or dark).
+func vmacAppearanceName(forSaved appearance: [String: Any]) -> NSAppearance.Name? {
+    vmacAppearanceName(for: appearance["mode"] as? String)
+}
+
+/// In full screen the guest owns the whole display: the menu bar and the
+/// toolbar stay away until the pointer reaches the top edge.
+func vmacFullScreenOptions() -> NSApplication.PresentationOptions {
+    [.fullScreen, .autoHideMenuBar, .autoHideToolbar]
+}
+
 enum VMacMenuKey { case quit, hide, minimize, settings, controlCenter, fullScreen }
 
 /// On the guest desktop VMac keeps only two shortcuts, so that every other

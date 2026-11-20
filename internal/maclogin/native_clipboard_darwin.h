@@ -1,3 +1,5 @@
+#include "clipboard_baseline.h"
+
 static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) {
     if ((automatic && ([board.types containsObject:@"org.nspasteboard.ConcealedType"] ||
                        [board.types containsObject:@"org.nspasteboard.TransientType"])) ||
@@ -112,6 +114,7 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
     NSFileHandle *_writer;
     dispatch_queue_t _outgoing;
     NSInteger _hostRevision;
+    BOOL _connectedBefore;
     NSInteger _serial;
     NSInteger _pendingSerial;
     BOOL _connected;
@@ -215,7 +218,8 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
         _connected = YES;
         _filesEnabled = [hello[@"subscribe"] boolValue];
         _typingEnabled = [hello[@"type_text"] boolValue];
-        _hostRevision = board.changeCount;
+        _hostRevision = cageClipboardBaseline(_connectedBefore, _hostRevision, board.changeCount);
+        _connectedBefore = YES;
         _subscribed = clipboardSharingEnabled();
         if (_subscribed) [self send:@{@"subscribe":@YES}];
         return;
