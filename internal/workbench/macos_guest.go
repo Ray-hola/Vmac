@@ -122,12 +122,7 @@ func (s *Server) checkMacOSGuest(ctx context.Context) error {
 		}
 	}
 	s.publishGate(state)
-	probe := `test "$(uname -s)" = Darwin && [[ $(sysctl -n hw.model) == VirtualMac* ]] && test "$(id -un)" = ` +
-		shellescape.Quote(s.macosGuest.User) + ` && [[ " $(id -Gn) " != *" admin "* ]]`
-	if s.macosGuest.Backend == guestos.MacOSQEMU {
-		probe = `/usr/local/libexec/cage-guest-check --expect ` + shellescape.Quote(s.macosGuest.UUID) + ` && test "$(id -un)" = ` + shellescape.Quote(s.macosGuest.User) + ` && [[ " $(id -Gn) " != *" admin "* ]]`
-	}
-	if _, err := s.guest(ctx, probe); err != nil {
+	if _, err := s.guest(ctx, s.macOSGuestIdentityProbe()); err != nil {
 		var exit *exec.ExitError
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) || (errors.As(err, &exit) && exit.ExitCode() == 255) {
 			return errMacOSGuestSSH
@@ -135,6 +130,16 @@ func (s *Server) checkMacOSGuest(ctx context.Context) error {
 		return errors.New("macOS 客机身份或普通账户校验未通过，请检查绑定的客机")
 	}
 	return nil
+}
+
+// macOSGuestIdentityProbe confirms the bound guest and its ordinary account.
+// After first setup that account may also be a guest administrator.
+func (s *Server) macOSGuestIdentityProbe() string {
+	user := shellescape.Quote(s.macosGuest.User)
+	if s.macosGuest.Backend == guestos.MacOSQEMU {
+		return `/usr/local/libexec/cage-guest-check --expect ` + shellescape.Quote(s.macosGuest.UUID) + ` && test "$(id -un)" = ` + user
+	}
+	return `test "$(uname -s)" = Darwin && [[ $(sysctl -n hw.model) == VirtualMac* ]] && test "$(id -un)" = ` + user
 }
 
 // macOSComponentReceiptProbe reads only the identity of the installed

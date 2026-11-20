@@ -299,3 +299,16 @@ func TestMacOSComponentDriftFromReceipt(t *testing.T) {
 		}
 	}
 }
+
+// Granting the ordinary account administrator rights must not make the
+// guest fail its identity check on the next start.
+func TestMacOSGuestIdentityAcceptsAdministratorAccount(t *testing.T) {
+	for _, backend := range []string{"", guestos.MacOSQEMU} {
+		s := testServer(t)
+		s.macosGuest = &guestos.MacOSProfile{Instance: "mac", User: "guestdev", Backend: backend, UUID: uuid.NewString()}
+		probe := s.macOSGuestIdentityProbe()
+		if strings.Contains(probe, "admin") || !strings.Contains(probe, `test "$(id -un)" = guestdev`) {
+			t.Errorf("backend %q identity probe = %q", backend, probe)
+		}
+	}
+}
