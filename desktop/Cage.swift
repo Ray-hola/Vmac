@@ -499,7 +499,6 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         }
     }
     private func selectGuestDestination(_ destination: String) {
-        if destination == "settings" { settings(); return }
         showGuestControls()
         let quoted = String(data: try! JSONSerialization.data(withJSONObject: [destination]), encoding: .utf8)!
         webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('cage-guest-navigate', {detail: \(quoted)[0]}));", completionHandler: nil)
@@ -537,7 +536,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         }
         showGuestControls()
         if reason == "restarting" || reason == "stopped" {
-            guestSidebar?.select("lifecycle")
+            guestSidebar?.select("overview")
         }
         CageDiagnostics.record("Embedded guest view returned to controls (\(reason)) in window \(window.windowNumber)")
         guard reason == "restarting" || reason == "settings" else { return }
@@ -545,10 +544,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         webView.evaluateJavaScript("window.dispatchEvent(new Event('\(signal)'));", completionHandler: nil)
     }
     @objc private func settings() {
-        if nativeVMWorkbench {
-            showGuestControls()
-            webView.evaluateJavaScript("window.dispatchEvent(new Event('cage-guest-settings'));", completionHandler: nil)
-        } else { action("settings") }
+        if nativeVMWorkbench { selectGuestDestination("general") } else { action("settings") }
     }
     @objc private func openProject() { action("openProject") }
     @objc private func newTab() { action("newTab") }

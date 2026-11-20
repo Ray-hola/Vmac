@@ -2,12 +2,6 @@ import Cocoa
 
 private func bounded(_ value: CGFloat) -> CGFloat { min(1, max(0, value)) }
 
-private extension NSView {
-    /// Layer colors are fixed once set, so they are resolved under this view's
-    /// own appearance and set again whenever that appearance changes.
-    func resolvingColors(_ body: () -> Void) { effectiveAppearance.performAsCurrentDrawingAppearance(body) }
-}
-
 /// Shared timing for sidebar motion; honours the system Reduce Motion setting.
 private enum SidebarMotion {
     static let ease = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
@@ -44,71 +38,30 @@ private enum SidebarMotion {
 
 private final class GuestNavigationButton: NSButton {
     var selected = false { didSet { if selected != oldValue { updateStyle() } } }
-    var expanded: Bool? {
-        didSet {
-            if let expanded { setAccessibilityExpanded(expanded) }
-            needsLayout = true
-        }
-    }
     private var hover = false
     private var tracking: NSTrackingArea?
     private let iconView = NSImageView()
     private let labelView = NSTextField(labelWithString: "")
-    private let disclosure = NSImageView()
-    private let fade = CAGradientLayer()
-    private var symbol = ""
-    private var indented = false
     override var isFlipped: Bool { true }
 
-    func configure(label: String, symbol: String, indented: Bool = false) {
-        title = ""; image = nil; self.symbol = symbol
-        self.indented = indented
+    func configure(label: String, symbol: String) {
+        title = ""; image = nil
         toolTip = label
         labelView.stringValue = label
-        labelView.font = .systemFont(ofSize: indented ? 13 : 13.5, weight: .medium)
+        labelView.font = .systemFont(ofSize: 13, weight: .medium)
         labelView.lineBreakMode = .byTruncatingTail
         labelView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        labelView.wantsLayer = true
-        fade.startPoint = CGPoint(x: 0, y: 0.5)
-        fade.endPoint = CGPoint(x: 1, y: 0.5)
+        iconView.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .regular))
         iconView.imageScaling = .scaleProportionallyDown
         iconView.setAccessibilityElement(false)
         addSubview(iconView); addSubview(labelView)
-        disclosure.isHidden = true
-        disclosure.setAccessibilityElement(false)
-        addSubview(disclosure)
         updateStyle()
     }
     override func layout() {
         super.layout()
-        let sidebarWidth = bounds.width + 20
-        let compact = bounded((142 - sidebarWidth) / 58)
-        let size: CGFloat = (indented ? 15 : 16) + compact * 3
-        let leading: CGFloat = indented ? 26 : 12
-        let x = leading + (bounds.midX - size / 2 - leading) * compact
-        iconView.frame = NSRect(x: x, y: (bounds.height-size)/2, width: size, height: size)
-        iconView.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size - 1, weight: .regular))
-        let opacity = bounded((sidebarWidth - 86) / 62)
-        labelView.alphaValue = opacity
-        labelView.isHidden = opacity == 0
-        let showsDisclosure = expanded != nil && sidebarWidth >= 145
-        disclosure.isHidden = !showsDisclosure
-        if let expanded, showsDisclosure {
-            disclosure.frame = NSRect(x: bounds.width-23, y: (bounds.height-12)/2, width: 12, height: 12)
-            disclosure.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
-            disclosure.contentTintColor = CagePalette.muted
-        }
-        let labelX: CGFloat = max(38, iconView.frame.maxX+10)
-        labelView.frame = NSRect(x: labelX, y: (bounds.height-20)/2, width: max(0,bounds.width-labelX-(showsDisclosure ? 29 : 9)), height: 20)
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        fade.frame = labelView.bounds
-        let overflow = labelView.intrinsicContentSize.width > labelView.bounds.width
-        fade.colors = [NSColor.black.cgColor, NSColor.black.cgColor, (overflow ? NSColor.clear : NSColor.black).cgColor]
-        fade.locations = [0, NSNumber(value: Double(max(0,1-10/max(1,labelView.bounds.width)))), 1]
-        labelView.layer?.mask = fade
-        CATransaction.commit()
+        iconView.frame = NSRect(x: 10, y: (bounds.height - 16) / 2, width: 16, height: 16)
+        labelView.frame = NSRect(x: 34, y: (bounds.height - 18) / 2, width: max(0, bounds.width - 42), height: 18)
     }
     override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
     override func updateTrackingAreas() {
@@ -119,13 +72,12 @@ private final class GuestNavigationButton: NSButton {
     }
     override func mouseEntered(with event: NSEvent) { hover = true; updateStyle() }
     override func mouseExited(with event: NSEvent) { hover = false; updateStyle() }
-    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); updateStyle() }
     private func updateStyle() {
         let color = selected ? CagePalette.accentText : CagePalette.ink
         iconView.contentTintColor = color; labelView.textColor = color
         // The selection pill behind the rows carries the selected background.
         SidebarMotion.layers(0.12) {
-            resolvingColors { layer?.backgroundColor = hover && !selected ? CagePalette.hover.cgColor : NSColor.clear.cgColor }
+            layer?.backgroundColor = hover && !selected ? CagePalette.hover.cgColor : NSColor.clear.cgColor
         }
         setAccessibilityValue(selected ? "已选择" : "")
     }
@@ -174,11 +126,9 @@ private final class SidebarPowerButton: NSButton {
         mode = next
         CATransaction.begin(); CATransaction.setDisableActions(true)
         let filled = next == .start && isEnabled
-        resolvingColors {
-            disc.backgroundColor = (filled ? CagePalette.accent : CagePalette.card).cgColor
-            disc.borderColor = CagePalette.line.cgColor
-            spinner.strokeColor = CagePalette.accent.cgColor
-        }
+        disc.backgroundColor = (filled ? CagePalette.accent : CagePalette.card).cgColor
+        disc.borderColor = CagePalette.line.cgColor
+        spinner.strokeColor = CagePalette.accent.cgColor
         disc.borderWidth = filled ? 0 : 1
         spinner.isHidden = next != .busy
         glyph.isHidden = next == .busy
@@ -194,7 +144,6 @@ private final class SidebarPowerButton: NSButton {
         refreshGlyph()
     }
     override var isEnabled: Bool { didSet { apply(mode, animated: false); alphaValue = isEnabled || mode == .busy ? 1 : 0.55 } }
-    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); apply(mode, animated: false) }
     private func refreshGlyph() {
         let symbol = mode == .start ? "play.fill" : "arrow.clockwise"
         let tint = mode == .start && isEnabled ? NSColor.white : CagePalette.ink
@@ -212,7 +161,7 @@ private final class SidebarPowerButton: NSButton {
         let scale = window?.backingScaleFactor ?? 2
         CATransaction.begin(); CATransaction.setDisableActions(true)
         glyph.contentsScale = scale
-        resolvingColors { glyph.contents = image.layerContents(forContentsScale: scale) }
+        glyph.contents = image.layerContents(forContentsScale: scale)
         glyph.contentsGravity = .resizeAspect
         CATransaction.commit()
     }
@@ -231,7 +180,6 @@ private final class SidebarMachineCard: NSView {
     private let state = NSTextField(labelWithString: "已停止")
     private var hover = false
     private var tracking: NSTrackingArea?
-    private var compact = false
     private var dotColor = CagePalette.faint
     override var isFlipped: Bool { true }
     init(profile: String) {
@@ -252,11 +200,8 @@ private final class SidebarMachineCard: NSView {
     required init?(coder: NSCoder) { fatalError() }
     override func layout() {
         super.layout()
-        compact = bounds.width < 126
-        name.isHidden = compact; state.isHidden = compact; dot.isHidden = compact; halo.isHidden = compact
-        let side: CGFloat = compact ? 38 : 28
-        power.frame = compact ? NSRect(x: (bounds.width-side)/2, y: (bounds.height-side)/2, width: side, height: side)
-            : NSRect(x: bounds.width-side-10, y: (bounds.height-side)/2, width: side, height: side)
+        let side: CGFloat = 28
+        power.frame = NSRect(x: bounds.width-side-10, y: (bounds.height-side)/2, width: side, height: side)
         let textWidth = max(0, power.frame.minX - 30)
         name.frame = NSRect(x: 25, y: 10, width: textWidth, height: 18)
         state.frame = NSRect(x: 25, y: 29, width: textWidth, height: 16)
@@ -292,21 +237,16 @@ private final class SidebarMachineCard: NSView {
     }
     private func refreshDot() {
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        resolvingColors {
-            dot.backgroundColor = dotColor.cgColor
-            halo.backgroundColor = dotColor.withAlphaComponent(0.2).cgColor
-        }
+        dot.backgroundColor = dotColor.cgColor
+        halo.backgroundColor = dotColor.withAlphaComponent(0.2).cgColor
         CATransaction.commit()
     }
     private func refreshChrome() {
         SidebarMotion.layers(0.15) {
-            resolvingColors {
-                layer?.backgroundColor = compact ? NSColor.clear.cgColor : (hover ? CagePalette.group : CagePalette.card).cgColor
-                layer?.borderColor = compact ? NSColor.clear.cgColor : CagePalette.line.cgColor
-            }
+            layer?.backgroundColor = (hover ? CagePalette.group : CagePalette.card).cgColor
+            layer?.borderColor = CagePalette.line.cgColor
         }
     }
-    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); refreshChrome(); refreshDot() }
     override func updateTrackingAreas() {
         if let tracking { removeTrackingArea(tracking) }
         tracking = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
@@ -326,7 +266,6 @@ private final class SidebarMachineCard: NSView {
 private final class SidebarLamp: NSButton {
     var color = CagePalette.muted
     var active = false
-    var showsLabel = true { didSet { needsDisplay = true } }
     private var hover = false
     private var tracking: NSTrackingArea?
     private let name: String
@@ -346,13 +285,13 @@ private final class SidebarLamp: NSButton {
     }
     override func draw(_ dirtyRect: NSRect) {
         let label = NSAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: hover ? CagePalette.ink : CagePalette.muted])
-        let width = showsLabel ? 7 + 5 + label.size().width : 7
+        let width = 7 + 5 + label.size().width
         let x = (bounds.width - width) / 2
         let rect = NSRect(x: x, y: bounds.midY-3.5, width: 7, height: 7)
         let path = NSBezierPath(ovalIn: rect)
         color.setStroke(); path.lineWidth = 1; path.stroke()
         if active { color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1.2, dy: 1.2)).fill() }
-        if showsLabel { label.draw(at: NSPoint(x: rect.maxX + 5, y: bounds.midY - label.size().height / 2)) }
+        label.draw(at: NSPoint(x: rect.maxX + 5, y: bounds.midY - label.size().height / 2))
     }
     override func updateTrackingAreas() {
         if let tracking { removeTrackingArea(tracking) }
@@ -363,52 +302,11 @@ private final class SidebarLamp: NSButton {
     override func mouseEntered(with event: NSEvent) { hover = true; hoverChanged() }
     override func mouseExited(with event: NSEvent) { hover = false; hoverChanged() }
     private func hoverChanged() {
-        SidebarMotion.layers(0.12) { resolvingColors { layer?.backgroundColor = hover ? CagePalette.hover.cgColor : NSColor.clear.cgColor } }
+        SidebarMotion.layers(0.12) { layer?.backgroundColor = hover ? CagePalette.hover.cgColor : NSColor.clear.cgColor }
         needsDisplay = true
     }
 }
 
-private final class SidebarSpeedCircle: NSView {
-    var upload = true { didSet { updateLabels() } }
-    var value: Double? { didSet { updateLabels() } }
-    private let arrow = NSTextField(labelWithString: "")
-    private let speed = NSTextField(labelWithString: "")
-    private let unit = NSTextField(labelWithString: "")
-    override var isFlipped: Bool { true }
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        for (label, size, color) in [(arrow, CGFloat(11), CagePalette.accent),
-                                     (speed, 13, CagePalette.ink), (unit, 10, CagePalette.muted)] {
-            label.alignment = .center
-            label.font = .monospacedDigitSystemFont(ofSize: size, weight: .medium)
-            label.textColor = color
-            label.cell?.usesSingleLineMode = true
-            label.setAccessibilityElement(false)
-            addSubview(label)
-        }
-        updateLabels()
-    }
-    required init?(coder: NSCoder) { fatalError() }
-    override func layout() {
-        super.layout()
-        for (label, y) in [(arrow, CGFloat(4)), (speed, 19), (unit, 36)] {
-            label.frame = NSRect(x: 1, y: y, width: max(0, bounds.width - 2), height: 16)
-        }
-    }
-    override func draw(_ dirtyRect: NSRect) {
-        CagePalette.line.setStroke()
-        let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
-        ring.lineWidth = 1
-        ring.stroke()
-    }
-    private func updateLabels() {
-        let parts = speedParts(value)
-        arrow.stringValue = upload ? "↑" : "↓"
-        arrow.textColor = upload ? CagePalette.accent : CagePalette.success
-        speed.stringValue = parts.0
-        unit.stringValue = parts.1
-    }
-}
 private func speedParts(_ value: Double?) -> (String,String) {
     guard let value, value.isFinite, value >= 0 else { return ("—","B/s") }
     if value >= 1024*1024 { return (String(format: value >= 100*1024*1024 ? "%.0f" : "%.1f",value/1024/1024),"MB/s") }
@@ -423,42 +321,28 @@ private func byteText(_ value: Double) -> String {
 }
 
 private final class SidebarTelemetry: NSView {
+    static let height: CGFloat = 140
     var onSelect: ((String) -> Void)?
     private var up = "↑ —", down = "↓ —", total = "流量 —", coverage = "余量未知"
     private var usedPercent: Double?
-    private var compactQuota = "—%"
-    private let circles = [SidebarSpeedCircle(),SidebarSpeedCircle()]
     private let lamps = [SidebarLamp("代理"),SidebarLamp("环境"),SidebarLamp("虚拟机")]
-    private let destinations = ["proxy", "checks", "desktop"]
+    private let destinations = ["proxy", "checks", "overview"]
     private let track = CALayer()
     private let fill = CALayer()
     override var isFlipped: Bool { true }
-    static func preferredHeight(width: CGFloat) -> CGFloat { width < 146 ? 166 : 140 }
     override init(frame: NSRect) {
         super.init(frame:frame)
         wantsLayer = true
         setAccessibilityElement(true);setAccessibilityRole(.group);setAccessibilityLabel("代理流量")
-        circles[0].upload=true;circles[1].upload=false
-        for circle in circles { circle.setAccessibilityElement(true);circle.setAccessibilityRole(.image);addSubview(circle) }
         for (lamp, destination) in zip(lamps, destinations) {
             lamp.target = self; lamp.action = #selector(lampPressed(_:))
             lamp.identifier = NSUserInterfaceItemIdentifier(destination)
             addSubview(lamp)
         }
         track.cornerRadius = 2
+        track.backgroundColor = CagePalette.line.cgColor
         fill.cornerRadius = 2; fill.anchorPoint = .zero
         layer?.addSublayer(track); track.addSublayer(fill)
-        refreshBarColors()
-    }
-    private func refreshBarColors() {
-        resolvingColors {
-            track.backgroundColor = CagePalette.line.cgColor
-            fill.backgroundColor = ((usedPercent ?? 0) > 85 ? CagePalette.warn : CagePalette.success).cgColor
-        }
-    }
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        CATransaction.begin(); CATransaction.setDisableActions(true); refreshBarColors(); CATransaction.commit()
     }
     required init?(coder: NSCoder) { fatalError() }
     @objc private func lampPressed(_ sender: NSButton) { if let id = sender.identifier?.rawValue { onSelect?(id) } }
@@ -480,12 +364,9 @@ private final class SidebarTelemetry: NSView {
         let u=(data["upload_rate"] as? NSNumber)?.doubleValue,d=(data["download_rate"] as? NSNumber)?.doubleValue
         let us=speedParts(u),ds=speedParts(d)
         up="↑ \(us.0) \(us.1)";down="↓ \(ds.0) \(ds.1)"
-        circles[0].value=u;circles[1].value=d
-        for (circle,text) in zip(circles,["上传：\(us.0) \(us.1)","下载：\(ds.0) \(ds.1)"]) { circle.toolTip=text;circle.setAccessibilityLabel(text) }
         let uploaded=(data["upload_24h"] as? NSNumber)?.doubleValue ?? 0,downloaded=(data["download_24h"] as? NSNumber)?.doubleValue ?? 0
         let quota=data["quota"] as? [String:Any]
         usedPercent=(quota?["used_percent"] as? NSNumber)?.doubleValue
-        compactQuota=usedPercent.map { String(format:"%.0f%%",$0) } ?? "—%"
         if let used=(quota?["used"] as? NSNumber)?.doubleValue,let cap=(quota?["total"] as? NSNumber)?.doubleValue,let remaining=(quota?["remaining"] as? NSNumber)?.doubleValue {
             total="已用 \(byteText(used))"
             coverage="余量 \(byteText(remaining))"
@@ -495,67 +376,48 @@ private final class SidebarTelemetry: NSView {
             coverage="余量 未提供额度"
             toolTip="订阅未提供额度，余量和已用比例未知。\n流量为本机记录的近24小时累计。"
         }
-        setAccessibilityValue("\(up)；\(down)；\(total)；\(coverage)；\(compactQuota) 已用")
+        setAccessibilityValue("\(up)；\(down)；\(total)；\(coverage)")
         layoutQuota(animated: true)
         needsDisplay=true
     }
     private func layoutQuota(animated: Bool) {
-        let wide = bounds.width >= 146
         let bar = CGRect(x: 14, y: 96, width: max(0, bounds.width-28), height: 4)
         let remaining = usedPercent.map { CGFloat(max(0, min(1, 1 - $0 / 100))) } ?? 0
         let apply = {
             self.track.frame = bar
             self.fill.bounds = CGRect(x: 0, y: 0, width: bar.width * remaining, height: bar.height)
             self.fill.position = .zero
-            self.refreshBarColors()
+            self.fill.backgroundColor = ((self.usedPercent ?? 0) > 85 ? CagePalette.warn : CagePalette.success).cgColor
         }
-        track.isHidden = !wide
-        if animated { SidebarMotion.layers(0.6, apply) }
+        if animated { SidebarMotion.layers(0.32, apply) }
         else { CATransaction.begin(); CATransaction.setDisableActions(true); apply(); CATransaction.commit() }
     }
     override func layout() {
         super.layout()
-        let compact=bounds.width<146
-        circles.forEach { $0.isHidden = !compact }
-        if compact {
-            let diameter:CGFloat=52
-            circles[0].frame=NSRect(x:(bounds.width-diameter)/2,y:10,width:diameter,height:diameter)
-            circles[1].frame=NSRect(x:(bounds.width-diameter)/2,y:68,width:diameter,height:diameter)
-        }
+        let width = (bounds.width - 16) / 3
         for (i, lamp) in lamps.enumerated() {
-            lamp.showsLabel = !compact
-            if compact {
-                lamp.frame = NSRect(x: bounds.midX - 27 + CGFloat(i) * 18, y: bounds.height - 22, width: 18, height: 18)
-            } else {
-                let width = (bounds.width - 16) / 3
-                lamp.frame = NSRect(x: 8 + CGFloat(i) * width, y: bounds.height - 26, width: width, height: 22)
-            }
+            lamp.frame = NSRect(x: 8 + CGFloat(i) * width, y: bounds.height - 26, width: width, height: 22)
         }
         layoutQuota(animated: false)
     }
     override func draw(_ dirtyRect: NSRect) {
         CagePalette.line.setStroke();let path=NSBezierPath();path.move(to:NSPoint(x:12,y:0.5));path.line(to:NSPoint(x:bounds.width-12,y:0.5));path.lineWidth=1;path.stroke()
-        func text(_ value:String,_ rect:NSRect,_ size:CGFloat,_ color:NSColor,_ centered:Bool=false) {
-            let style=NSMutableParagraphStyle();style.lineBreakMode = .byTruncatingTail;style.alignment = centered ? .center : .left
+        func text(_ value:String,_ rect:NSRect,_ size:CGFloat,_ color:NSColor) {
+            let style=NSMutableParagraphStyle();style.lineBreakMode = .byTruncatingTail;style.alignment = .center
             (value as NSString).draw(in:rect,withAttributes:[.font:CagePalette.mono(size),.foregroundColor:color,.paragraphStyle:style])
         }
-        if bounds.width>=146 {
-            func speed(_ value: String, y: CGFloat, color: NSColor) {
-                let line = NSMutableAttributedString(
-                    string: value,
-                    attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 15, weight: .semibold), .foregroundColor: CagePalette.ink]
-                )
-                line.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: 1))
-                line.draw(at: NSPoint(x: (bounds.width-line.size().width)/2, y: y))
-            }
-            speed(up, y: 12, color: CagePalette.accent)
-            speed(down, y: 33, color: CagePalette.success)
-            text(total, NSRect(x: 8, y: 60, width: bounds.width-16, height: 17), 12, CagePalette.ink, true)
-            text(coverage, NSRect(x: 8, y: 77, width: bounds.width-16, height: 16), 11, CagePalette.muted, true)
-        } else {
-            text("\(compactQuota)已用",NSRect(x:2,y:126,width:bounds.width-4,height:16),11,CagePalette.ink,true)
-            // The tooltip and accessibility value supply the used/remaining meaning.
+        func speed(_ value: String, y: CGFloat, color: NSColor) {
+            let line = NSMutableAttributedString(
+                string: value,
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 15, weight: .semibold), .foregroundColor: CagePalette.ink]
+            )
+            line.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: 1))
+            line.draw(at: NSPoint(x: (bounds.width-line.size().width)/2, y: y))
         }
+        speed(up, y: 12, color: CagePalette.accent)
+        speed(down, y: 33, color: CagePalette.success)
+        text(total, NSRect(x: 8, y: 60, width: bounds.width-16, height: 17), 12, CagePalette.ink)
+        text(coverage, NSRect(x: 8, y: 77, width: bounds.width-16, height: 16), 11, CagePalette.muted)
     }
 }
 
@@ -568,133 +430,115 @@ func activeProfileName() -> String {
 
 final class CageGuestSidebar: NSView {
     var onSelect:((String)->Void)?
+    // The pages, in the order and groups of ui/src/vmac-pages.mjs (kept in
+    // step by ui/src/vmac-pages-sync.test.mjs): id, title, symbol, group.
+    // sidebar-pages:begin
+    private let pageRows: [(String, String, String, String)] = [
+        ("overview", "概览", "rectangle.grid.2x2", ""),
+        ("machines", "虚拟机与磁盘", "internaldrive", "这台客机"),
+        ("system", "账户与系统", "person.crop.circle", "这台客机"),
+        ("sharing", "共享与传输", "arrow.left.arrow.right", "这台客机"),
+        ("proxy", "代理线路", "network", "网络"),
+        ("checks", "环境检测", "checkmark.shield", "网络"),
+        ("general", "通用", "gearshape", "VMac"),
+        ("security", "账户与安全", "lock.shield", "VMac"),
+        ("recovery", "环境与恢复", "arrow.counterclockwise", "VMac"),
+        ("about", "关于", "info.circle", "VMac"),
+    ]
+    // sidebar-pages:end
     private var rows:[String:GuestNavigationButton]=[:]
-    private let destinations = [("desktop","客机桌面","macwindow"),("management","虚拟机管理","internaldrive"),("proxy","代理管理","network"),("checks","环境检测","checkmark.shield")]
-    private let management = [("space","存储空间","externaldrive"),("profiles","虚拟机切换","square.on.square"),("login","客机账户","person.crop.circle"),("timezone","时区","clock"),("input","输入法","keyboard")]
-    private var managementExpanded = true
+    /// Group titles, keyed by the id of the first page under each.
+    private var headers:[String:NSTextField]=[:]
     private let brand=NSTextField(labelWithString:"VMac")
     private let logo=NSImageView()
     private let machine = SidebarMachineCard(profile: activeProfileName())
     private let pill = NSView()
-    private var selected = "desktop"
+    private var selected = "overview"
     private var pillAnimating = false
-    private let settingsRow = GuestNavigationButton()
     private let telemetry=SidebarTelemetry(frame:.zero)
     override var isFlipped: Bool { true }
     init() {
         super.init(frame:.zero)
         wantsLayer=true
+        layer?.backgroundColor = CagePalette.sidebar.cgColor
         translatesAutoresizingMaskIntoConstraints=false
         brand.font = .systemFont(ofSize: 20, weight: .semibold);brand.textColor=CagePalette.ink;brand.lineBreakMode = .byTruncatingTail;brand.cell?.usesSingleLineMode=true;addSubview(brand)
         if let path=Bundle.main.path(forResource:"VMacMark",ofType:"pdf") { logo.image=NSImage(contentsOfFile:path) }
         logo.imageScaling = .scaleProportionallyUpOrDown;logo.setAccessibilityElement(false);addSubview(logo)
-        machine.onOpen = { [weak self] in self?.choose("desktop") }
+        machine.onOpen = { [weak self] in self?.onSelect?("desktop") }
         machine.power.target = self; machine.power.action = #selector(powerPressed)
         addSubview(machine)
         pill.wantsLayer = true
         pill.layer?.cornerRadius = 8
+        pill.layer?.backgroundColor = CagePalette.accentSoft.cgColor
         addSubview(pill)
-        refreshColors()
-        for (id,label,symbol) in Array(destinations.prefix(2)) + management + Array(destinations.dropFirst(2)) {
+        var group = ""
+        for (id,label,symbol,section) in pageRows {
+            if section != group, !section.isEmpty {
+                let header = NSTextField(labelWithString: section)
+                header.font = .systemFont(ofSize: 11, weight: .medium)
+                header.textColor = CagePalette.faint
+                header.setAccessibilityRole(.staticText)
+                addSubview(header); headers[id] = header
+            }
+            group = section
             let button=GuestNavigationButton(title:label,target:self,action:#selector(selectRow(_:)))
             button.identifier=NSUserInterfaceItemIdentifier(id)
-            button.configure(label: label, symbol: symbol, indented: isManagementPage(id))
+            button.configure(label: label, symbol: symbol)
             button.isBordered=false;button.bezelStyle = .inline;button.focusRingType = .default
             button.wantsLayer=true;button.layer?.cornerRadius=8;button.setAccessibilityLabel(label)
-            if id == "management" {
-                button.setAccessibilityRole(.disclosureTriangle)
-                button.expanded = managementExpanded
-            }
             addSubview(button);rows[id]=button
         }
-        settingsRow.title = "设置"; settingsRow.target = self; settingsRow.action = #selector(selectRow(_:))
-        settingsRow.identifier = NSUserInterfaceItemIdentifier("settings"); settingsRow.configure(label: "设置", symbol: "gearshape")
-        settingsRow.isBordered = false; settingsRow.bezelStyle = .inline; settingsRow.wantsLayer = true
-        settingsRow.layer?.cornerRadius = 8; settingsRow.setAccessibilityLabel("设置")
-        addSubview(settingsRow)
-        telemetry.onSelect = { [weak self] id in self?.choose(id) }
+        telemetry.onSelect = { [weak self] id in self?.onSelect?(id) }
         addSubview(telemetry)
-        select("desktop")
+        select("overview")
     }
     required init?(coder:NSCoder) { fatalError() }
-    private func refreshColors() {
-        resolvingColors {
-            layer?.backgroundColor = CagePalette.sidebar.cgColor
-            pill.layer?.backgroundColor = CagePalette.accentSoft.cgColor
-        }
-    }
-    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); refreshColors() }
-    private func isManagementPage(_ id: String) -> Bool {
-        management.contains { $0.0 == id }
-    }
-    private var highlighted: String {
-        !managementExpanded && isManagementPage(selected) ? "management" : selected
-    }
-    private func layoutNavigation() {
-        let compact = bounds.width < 146
-        var y = machine.frame.maxY + 14
-        let parentHeight: CGFloat = 32
-        let childHeight: CGFloat = compact ? 27 : 30
-        let count = managementExpanded ? management.count : 0
-        let preferred = CGFloat(destinations.count) * (parentHeight + 2) + CGFloat(count) * (childHeight + 2)
-        let scale = bounded((telemetry.frame.minY - y - 8) / preferred)
-        func place(_ id: String, height: CGFloat) {
-            let fitted = floor((height + 2) * scale)
-            rows[id]?.frame = NSRect(x: 10, y: y, width: max(0, bounds.width-20), height: max(0, fitted-2))
-            rows[id]?.needsLayout = true
-            y += fitted
-        }
-        for (id, _, _) in destinations {
-            place(id, height: parentHeight)
-            if id == "management" {
-                for (child, _, _) in management {
-                    rows[child]?.isHidden = !managementExpanded
-                    if managementExpanded { place(child, height: childHeight) }
-                }
+    override func layout() {
+        super.layout()
+        logo.frame=NSRect(x:14,y:22,width:28,height:28)
+        brand.frame=NSRect(x:50,y:21,width:max(0,bounds.width-60),height:28)
+        machine.frame = NSRect(x: 10, y: 64, width: max(0, bounds.width-20), height: 56)
+        let top = machine.frame.maxY + 14
+        let rowHeight: CGFloat = 32, rowGap: CGFloat = 2, headerHeight: CGFloat = 34
+        let needed = CGFloat(pageRows.count) * (rowHeight + rowGap) + CGFloat(headers.count) * headerHeight
+        // The traffic panel gives way before the navigation is squeezed.
+        let withTelemetry = bounds.height - top - SidebarTelemetry.height - 16
+        telemetry.isHidden = withTelemetry < needed
+        let available = telemetry.isHidden ? bounds.height - top - 12 : withTelemetry
+        let scale = bounded(available / needed)
+        telemetry.frame = NSRect(x: 0, y: bounds.height - SidebarTelemetry.height - 8, width: bounds.width, height: SidebarTelemetry.height)
+        telemetry.needsLayout = true
+        var y = top
+        for (id, _, _, _) in pageRows {
+            if let header = headers[id] {
+                let height = floor(headerHeight * scale)
+                header.frame = NSRect(x: 20, y: y + height - 20, width: max(0, bounds.width - 40), height: 16)
+                y += height
             }
+            let height = floor((rowHeight + rowGap) * scale)
+            rows[id]?.frame = NSRect(x: 10, y: y, width: max(0, bounds.width - 20), height: max(0, height - rowGap))
+            rows[id]?.needsLayout = true
+            y += height
         }
         if !pillAnimating { pill.frame = pillTarget() }
     }
-    private func showManagement(_ expanded: Bool) {
-        managementExpanded = expanded
-        rows["management"]?.expanded = expanded
-        layoutNavigation()
-        for (key, button) in rows { button.selected = key == highlighted }
-    }
-    override func layout() {
-        super.layout()
-        let compact=bounds.width<146
-        brand.isHidden=compact
-        logo.frame=compact ? NSRect(x:(bounds.width-32)/2,y:20,width:32,height:32) : NSRect(x:14,y:22,width:28,height:28)
-        brand.frame=NSRect(x:50,y:21,width:max(0,bounds.width-60),height:28)
-        machine.frame = NSRect(x: 10, y: 64, width: max(0, bounds.width-20), height: compact ? 46 : 56)
-        settingsRow.frame = NSRect(x: 10, y: bounds.height-44, width: max(0, bounds.width-20), height: 34)
-        settingsRow.needsLayout = true
-        let height = SidebarTelemetry.preferredHeight(width: bounds.width)
-        telemetry.frame=NSRect(x:0,y:settingsRow.frame.minY-6-height,width:bounds.width,height:height)
-        telemetry.needsLayout=true
-        layoutNavigation()
-    }
     private func pillTarget() -> NSRect {
-        rows[highlighted]?.frame ?? .zero
+        rows[selected]?.frame ?? .zero
     }
-    @objc private func selectRow(_ sender:NSButton) { guard let id=sender.identifier?.rawValue else{return}; choose(id) }
+    @objc private func selectRow(_ sender:NSButton) { if let id=sender.identifier?.rawValue { onSelect?(id) } }
     @objc private func powerPressed() { onSelect?(machine.power.mode == .restart ? "restart" : "start") }
-    private func choose(_ id: String) {
-        if id == "management" { showManagement(!managementExpanded) }
-        else { onSelect?(id) }
-    }
+    /// Names from before the pages were merged still select the overview.
     func select(_ requested:String) {
-        let id = requested == "lifecycle" ? "desktop" : requested
-        guard rows[id] != nil, id != "management" else { return }
+        let id = requested == "lifecycle" || requested == "desktop" ? "overview" : requested
+        guard rows[id] != nil else { return }
         let changed = id != selected
         selected = id
-        if changed && !managementExpanded && isManagementPage(id) { showManagement(true) }
-        for (key,button) in rows { button.selected = key == highlighted }
+        for (key,button) in rows { button.selected = key == selected }
         guard changed else { return }
         guard window != nil, !pill.frame.isEmpty else { pill.frame = pillTarget(); return }
         pillAnimating = true
-        SidebarMotion.animate(0.28, { pill.animator().frame = pillTarget() }, completion: { [weak self] in
+        SidebarMotion.animate(0.2, { pill.animator().frame = pillTarget() }, completion: { [weak self] in
             guard let self else { return }
             self.pillAnimating = false
             self.pill.frame = self.pillTarget()
