@@ -40,14 +40,6 @@ enum VMacShellTests {
         toast.dismiss()
         precondition(!toast.visible)
 
-        precondition(vmacAppearanceName(for: "light") == .aqua)
-        precondition(vmacAppearanceName(for: "dark") == .darkAqua)
-        precondition(vmacAppearanceName(for: nil) == nil && vmacAppearanceName(for: "system") == nil)
-
-        precondition(vmacAppearanceName(forSaved: ["mode": "dark"]) == .darkAqua, "the appearance picked in settings is honored")
-        precondition(vmacAppearanceName(forSaved: ["mode": "light"]) == .aqua)
-        precondition(vmacAppearanceName(forSaved: ["mode": "system"]) == nil && vmacAppearanceName(forSaved: [:]) == nil)
-
         let fullScreen = vmacFullScreenOptions()
         precondition(fullScreen.contains(.fullScreen) && fullScreen.contains(.autoHideToolbar) && fullScreen.contains(.autoHideMenuBar),
                      "in full screen the toolbar hides until the pointer reaches the top edge")
@@ -63,6 +55,6 @@ enum VMacShellTests {
             let inControls = VMacMenuKeys.equivalent(for: key, mode: .controlCenter)
             precondition(inControls.key == expected && inControls.modifiers == [.command])
         }
-        print("VMac shell state, status, toast, appearance and menu key checks passed")
+        print("VMac shell state, status, toast, full screen and menu key checks passed")
     }
 }

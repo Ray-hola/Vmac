@@ -254,7 +254,7 @@ enum VMacMenuKeys { static func equivalent(for key: VMacMenuKey, mode: VMacShell
   - 快捷键：`.controlCenter` 在两种状态下都是 `(",", [.control, .command])`；`.fullScreen` 都是 `("f", [.control, .command])`；`.quit`、`.hide`、`.minimize`、`.settings` 在 `.desktop` 下 `key == ""`，在 `.controlCenter` 下分别是 `"q"`、`"h"`、`"m"`、`","` 配 `[.command]`。
 - [ ] **Step 2: 运行，确认失败**。`bash scripts/test-vmac-shell.sh`
 - [ ] **Step 3: 实现 `VMacShell.swift`**。
-- [ ] **Step 4: 运行，确认通过**，输出一行 `VMac shell state, status, toast, appearance and menu key checks passed`。
+- [ ] **Step 4: 运行，确认通过**，输出一行 `VMac shell state, status, toast, full screen and menu key checks passed`。
 - [ ] **Step 5: 提交**。`git commit -m "Add the shell state, status, toast and menu key rules"`
 
 ### Task 5: 工具栏

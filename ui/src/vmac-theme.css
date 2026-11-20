@@ -1,8 +1,7 @@
 /*
- * VMac theme: white surfaces, near-black text and one blue accent, with a
- * dark variant. The values mirror vmac-tokens.mjs; vmac-theme.test.mjs fails
- * when they drift. The appearance follows the system unless the root element
- * carries data-vmac-appearance="light" or "dark".
+ * VMac theme: white surfaces, near-black text and one blue accent. VMac is
+ * always light. The values mirror vmac-tokens.mjs; vmac-theme.test.mjs fails
+ * when they drift.
  */
 :root.vmac-theme {
   --chrome: #f9fafb !important; --chrome-dark: #f1f3f5 !important; --paper: #ffffff !important; --input: #ffffff !important;
@@ -19,28 +18,4 @@
   --vm-ease: cubic-bezier(.2, .8, .2, 1); --vm-fast: 120ms; --vm-mid: 200ms; --vm-slow: 320ms;
   --vm-shadow: 0 1px 2px rgba(15, 17, 21, .04), 0 8px 24px rgba(15, 17, 21, .08);
   color-scheme: light !important;
-}
-
-:root.vmac-theme[data-vmac-appearance="dark"] {
-  --chrome: #1b1b1c !important; --chrome-dark: #232324 !important; --paper: #151517 !important; --input: #2c2c2e !important;
-  --ink: #f5f6f7 !important; --strong: #f5f6f7 !important; --muted: #a8adb4 !important; --line: rgba(255,255,255,.1) !important; --border: rgba(255,255,255,.1) !important;
-  --accent: #5686fe !important; --focus: #5686fe !important; --hover: rgba(255,255,255,.06) !important; --selected: #252e45 !important; --selection: #252e45 !important;
-  --button: #3964fe !important; --button-ink: #ffffff !important; --link: #8fb0ff !important; --success: #4ed17e !important; --danger: #f87171 !important;
-  --card: #2c2c2e; --well: #232324; --warn: #f7ad31; --faint: #7a8089; --accent-text: #8fb0ff;
-  --accent-soft: #252e45; --success-soft: rgba(34, 197, 94, .18); --warn-soft: rgba(245, 158, 11, .18); --danger-soft: rgba(242, 90, 90, .18);
-  --vm-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .4);
-  color-scheme: dark !important;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root.vmac-theme:not([data-vmac-appearance="light"]) {
-    --chrome: #1b1b1c !important; --chrome-dark: #232324 !important; --paper: #151517 !important; --input: #2c2c2e !important;
-    --ink: #f5f6f7 !important; --strong: #f5f6f7 !important; --muted: #a8adb4 !important; --line: rgba(255,255,255,.1) !important; --border: rgba(255,255,255,.1) !important;
-    --accent: #5686fe !important; --focus: #5686fe !important; --hover: rgba(255,255,255,.06) !important; --selected: #252e45 !important; --selection: #252e45 !important;
-    --button: #3964fe !important; --button-ink: #ffffff !important; --link: #8fb0ff !important; --success: #4ed17e !important; --danger: #f87171 !important;
-    --card: #2c2c2e; --well: #232324; --warn: #f7ad31; --faint: #7a8089; --accent-text: #8fb0ff;
-    --accent-soft: #252e45; --success-soft: rgba(34, 197, 94, .18); --warn-soft: rgba(245, 158, 11, .18); --danger-soft: rgba(242, 90, 90, .18);
-    --vm-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .4);
-    color-scheme: dark !important;
-  }
 }

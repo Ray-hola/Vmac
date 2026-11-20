@@ -1,4 +1,5 @@
-// The VMac palette. The web theme (vmac-theme.css) and the native palette
+// The VMac palette: white, near-black and one blue, in a single light
+// appearance. The web theme (vmac-theme.css) and the native palette
 // (desktop/VMacPalette.swift) each hold a copy; tests keep the three in step.
 export const tokens = {
   light: {
@@ -7,13 +8,6 @@ export const tokens = {
     accent: "#3964FE", accentFill: "#3964FE", accentFillHover: "#2F56E8", accentFillActive: "#2648CC",
     accentText: "#2648CC", accentSoft: "#E4EDFD", hover: "rgba(38,49,72,.06)", onAccent: "#FFFFFF",
     okDot: "#22C55E", okText: "#15803D", warnDot: "#F59E0B", warnText: "#B45309", badDot: "#F25A5A", badText: "#B91C1C",
-  },
-  dark: {
-    page: "#151517", chrome: "#1B1B1C", group: "#232324", popover: "#2C2C2E", line: "rgba(255,255,255,.1)",
-    ink: "#F5F6F7", muted: "#A8ADB4", faint: "#7A8089",
-    accent: "#5686FE", accentFill: "#3964FE", accentFillHover: "#2F56E8", accentFillActive: "#2648CC",
-    accentText: "#8FB0FF", accentSoft: "#252E45", hover: "rgba(255,255,255,.06)", onAccent: "#FFFFFF",
-    okDot: "#22C55E", okText: "#4ED17E", warnDot: "#F59E0B", warnText: "#F7AD31", badDot: "#F25A5A", badText: "#F87171",
   },
 };
 

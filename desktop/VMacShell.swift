@@ -72,20 +72,6 @@ struct VMacToastModel {
     mutating func dismiss() { text = ""; kind = .info }
 }
 
-/// The saved appearance choice as a window appearance; nil follows the system.
-func vmacAppearanceName(for setting: String?) -> NSAppearance.Name? {
-    switch setting {
-    case "light": return .aqua
-    case "dark": return .darkAqua
-    default: return nil
-    }
-}
-
-/// The appearance saved by the settings page ("mode": system, light or dark).
-func vmacAppearanceName(forSaved appearance: [String: Any]) -> NSAppearance.Name? {
-    vmacAppearanceName(for: appearance["mode"] as? String)
-}
-
 /// In full screen the guest owns the whole display: the menu bar and the
 /// toolbar stay away until the pointer reaches the top edge.
 func vmacFullScreenOptions() -> NSApplication.PresentationOptions {

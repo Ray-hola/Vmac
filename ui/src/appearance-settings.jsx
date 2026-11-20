@@ -655,27 +655,30 @@ export function AppearanceSettings() {
         <p>更改自动保存并即时生效，无需重启项目。</p>
       </div>
       <fieldset disabled={loading || syncing} className="appearance-fields">
-        <SettingRow
-          label="主题"
-          description="跟随系统，或固定使用浅色、深色外观。"
-        >
-          <div className="appearance-mode" role="group" aria-label="主题模式">
-            {[
-              ["light", "浅色", Sun],
-              ["dark", "深色", Moon],
-              ["system", "跟随系统", Monitor],
-            ].map(([mode, label, Icon]) => (
-              <button
-                key={mode}
-                aria-pressed={appearance.mode === mode}
-                onClick={() => patch({ mode })}
-              >
-                <Icon size={15} />
-                {label}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
+        {/* VMac is always light. */}
+        {!window.cageNativeVMWorkbench && (
+          <SettingRow
+            label="主题"
+            description="跟随系统，或固定使用浅色、深色外观。"
+          >
+            <div className="appearance-mode" role="group" aria-label="主题模式">
+              {[
+                ["light", "浅色", Sun],
+                ["dark", "深色", Moon],
+                ["system", "跟随系统", Monitor],
+              ].map(([mode, label, Icon]) => (
+                <button
+                  key={mode}
+                  aria-pressed={appearance.mode === mode}
+                  onClick={() => patch({ mode })}
+                >
+                  <Icon size={15} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </SettingRow>
+        )}
         <ThemeLibrary
           key={String(loading)}
           appearance={appearance}

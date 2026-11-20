@@ -14,12 +14,6 @@ test("light variables come from the tokens", () => {
     assert.ok(has(light, name, tokens.light[key]), `${name} should be ${tokens.light[key]}`);
   }
 });
-test("dark variables come from the tokens", () => {
-  const dark = block(':root.vmac-theme[data-vmac-appearance="dark"]');
-  for (const [name, key] of [["--paper", "page"], ["--ink", "ink"], ["--accent", "accent"], ["--link", "accentText"]]) {
-    assert.ok(has(dark, name, tokens.dark[key]), `${name} should be ${tokens.dark[key]}`);
-  }
-});
 test("no stylesheet keeps the retired palette", () => {
   const retired = /#a64d2f|#933f24|#faf9f5|#fffefb|#f0eee7|#e8e5db|#dcd7cb|#716d64|#527052|#a43830|#b2741d|166, 77, 47|38, 38, 36/i;
   const dir = new URL(".", import.meta.url);
@@ -29,13 +23,9 @@ test("no stylesheet keeps the retired palette", () => {
   }
 });
 
-test("dark looks the same whether the system or the setting chose it", () => {
-  const values = text => text.slice(text.indexOf("{") + 1).replace(/\s+/g, " ").trim();
-  const chosen = css.slice(css.indexOf(':root.vmac-theme[data-vmac-appearance="dark"]')).split("}")[0];
-  const system = css.slice(css.indexOf(':root.vmac-theme:not([data-vmac-appearance="light"])')).split("}")[0];
-  assert.equal(values(system), values(chosen));
-});
-test("the appearance setting reaches the VMac theme", () => {
+test("the theme is light only", () => {
+  assert.doesNotMatch(css, /prefers-color-scheme|data-vmac-appearance/);
+  assert.match(css, /color-scheme: light !important/);
   const source = readFileSync(new URL("./appearance.jsx", import.meta.url), "utf8");
-  assert.match(source, /dataset\.vmacAppearance = variant/);
+  assert.doesNotMatch(source, /vmacAppearance/);
 });

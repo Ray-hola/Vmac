@@ -10,6 +10,7 @@ import {
   defaultAppearance,
   normalizeAppearance,
   themeVariables,
+  resolveVariant,
 } from "./appearance-state.mjs";
 
 const AppearanceContext = createContext(null);
@@ -37,12 +38,7 @@ export function AppearanceProvider({ children }) {
   const revision = useRef(0),
     queue = useRef(Promise.resolve()),
     current = useRef(appearance);
-  const variant =
-    appearance.mode === "system"
-      ? systemDark
-        ? "dark"
-        : "light"
-      : appearance.mode;
+  const variant = resolveVariant(appearance.mode, systemDark, Boolean(window.cageNativeVMWorkbench));
   const theme = appearance[variant + "Theme"];
   current.current = appearance;
   useEffect(() => {
@@ -89,8 +85,6 @@ export function AppearanceProvider({ children }) {
       appearance.pointerCursors ? "pointer" : "default",
     );
     root.dataset.theme = variant;
-    // VMac's own theme follows the same resolved choice (vmac-theme.css).
-    if (window.cageNativeVMWorkbench) root.dataset.vmacAppearance = variant;
     root.dataset.translucent = String(!theme.opaqueWindows);
     root.dataset.fontSmoothing = String(appearance.fontSmoothing);
     root.dataset.reducedMotion = String(
