@@ -343,6 +343,7 @@
 .vmac-theme .settings-embedded .section-title { margin-bottom: 16px; }
 .vmac-theme .settings-embedded .section-title h3 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
 .vmac-theme .settings-embedded .section-title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.vmac-theme .settings-embedded a { color: var(--accent-text); text-underline-offset: 2px; }
 .native-guest-home[data-wide] { --vm-column: 1040px; }
 
 /* ── Grouped lists ──────────────────────────────────────── */
