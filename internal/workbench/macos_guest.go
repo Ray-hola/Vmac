@@ -34,7 +34,7 @@ func macOSWorkbenchRoute(path string) bool {
 		return id == "requests" || id == "open" || browserFileID.MatchString(id)
 	}
 	switch path {
-	case "/api/macos/disk", "/api/macos/space/scan", "/api/macos/space/clean", "/api/environment/macos-screen-sharing", "/api/macos/first-setup", "/api/appearance/codex", "/api/macos/project-approval", "/api/macos/exit-policy", "/api/macos/login", "/api/macos/maintenance", "/api/macos/restart", "/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard":
+	case "/api/macos/disk", "/api/macos/space/scan", "/api/macos/space/clean", "/api/environment/macos-screen-sharing", "/api/macos/first-setup", "/api/appearance/codex", "/api/macos/project-approval", "/api/macos/exit-policy", "/api/macos/login", "/api/macos/maintenance", "/api/macos/restart", "/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard", "/api/macos/native-reveal", "/api/macos/native-drop", "/api/macos/guest-admin":
 		return true
 	case "/api/macos/input-sources":
 		return true
