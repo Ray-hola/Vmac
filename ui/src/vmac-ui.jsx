@@ -1,4 +1,11 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
+
+// A switch is the platform's own control where the browser has one (the
+// `switch` attribute); elsewhere the stylesheet draws the checkbox as one.
+if (typeof HTMLInputElement !== "undefined" && !("switch" in HTMLInputElement.prototype)) {
+  document.documentElement.classList.add("vm-no-switch");
+}
 
 // A segmented control whose highlight slides to the selected option.
 export function Segmented({ items, value, onChange, label, disabled = false }) {
@@ -28,19 +35,22 @@ export function StatusChip({ tone = "idle", children, title }) {
   return <span className={`vm-chip ${tone}`} title={title}><i aria-hidden="true" />{children}</span>;
 }
 
-export function PageHeader({ title, subtitle, aside }) {
+// A state in words with its dot, for use inside a line of text.
+export function State({ tone = "idle", children }) {
+  return <span className={`vm-state ${tone}`}><i aria-hidden="true" />{children}</span>;
+}
+
+export function PageHeader({ title, subtitle }) {
   return <header className="vm-header">
-    <div className="vm-header-text">
-      <h1>{title}</h1>
-      {subtitle && <p>{subtitle}</p>}
-    </div>
-    {aside && <div className="vm-header-aside">{aside}</div>}
+    <h1>{title}</h1>
+    {subtitle && <p>{subtitle}</p>}
   </header>;
 }
 
-// A titled block of rows, in the manner of macOS System Settings.
-export function Group({ title, children }) {
-  return <section className="vm-group" aria-label={title}>
+// A card of rows. `title` is shown as the card's first line; `label` only
+// names the group for assistive technology, for a card that needs no heading.
+export function Group({ title, label, children }) {
+  return <section className="vm-group" aria-label={title || label}>
     {title && <h2 className="vm-group-title">{title}</h2>}
     <div className="vm-group-rows">{children}</div>
   </section>;
@@ -54,9 +64,19 @@ export function Row({ title, detail, children }) {
   </div>;
 }
 
+// A row that opens another page: the whole row is the button.
+export function LinkRow({ icon: Icon, title, detail, children, onClick }) {
+  return <button type="button" className="vm-row" onClick={onClick}>
+    {Icon && <span className="vm-row-icon" aria-hidden="true"><Icon size={17} /></span>}
+    <span className="vm-row-text"><span>{title}</span>{detail && <small>{detail}</small>}</span>
+    {children && <span className="vm-row-control">{children}</span>}
+    <ChevronRight size={16} className="vm-row-chevron" aria-hidden="true" />
+  </button>;
+}
+
 export function Toggle({ checked, onChange, label, disabled = false }) {
-  return <button type="button" className="vm-toggle" role="switch" aria-checked={Boolean(checked)} aria-label={label}
-    disabled={disabled} onClick={() => onChange(!checked)}><span aria-hidden="true" /></button>;
+  return <input type="checkbox" switch="" role="switch" className="vm-switch" aria-label={label}
+    checked={Boolean(checked)} disabled={disabled} onChange={event => onChange(event.target.checked)} />;
 }
 
 export { gib } from "./vmac-shell.mjs";

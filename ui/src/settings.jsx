@@ -51,6 +51,11 @@ const sections = [
   ["project", "环境与恢复", RotateCcw],
   ["about", "关于", Info],
 ];
+// Inside a VMac page each part of a long section is a card of its own.
+function Block({ when, children }) {
+  return when ? <section className="vm-subcard">{children}</section> : children;
+}
+
 export function SettingsPanel({
   current,
   status,
@@ -104,6 +109,8 @@ export function SettingsPanel({
       : draft[k] !== current[k],
   );
   const shows = (id) => (embedded ? embeddedSections.includes(id) : section === id);
+  // In VMac a switch is the platform's own control; see .vm-switch.
+  const nativeSwitch = embedded ? { switch: "", className: "vm-switch" } : {};
   const busy =
     Boolean(status.job?.running) || Boolean(status.storage_recovery?.required) || probing || submitting || Boolean(jobId);
   // Project folders of the other guest systems are always read directly.
@@ -366,6 +373,7 @@ export function SettingsPanel({
                   </span>
                   <input
                     role="switch"
+                    {...nativeSwitch}
                     type="checkbox"
                     checked={draft.auto_timezone}
                     onChange={(e) => update("auto_timezone", e.target.checked)}
@@ -410,6 +418,7 @@ export function SettingsPanel({
                   </span>
                   <input
                     role="switch"
+                    {...nativeSwitch}
                     type="checkbox"
                     checked={Boolean(draft.auto_language)}
                     onChange={(e) => update("auto_language", e.target.checked)}
@@ -620,11 +629,12 @@ export function SettingsPanel({
             )}
             {shows("project") && (
               <>
-                <div className="section-title">
+                {/* The page already carries this title. */}
+                {!embedded && <div className="section-title">
                   <h3>环境与恢复</h3>
                   <p>{status.upload_only ? "客机文件独立保存，可在应用中主动上传主机文件。" : isRemoteClient() ? "项目位于云端，VMac 中的改动会直接保存到云端文件。" : "本机与 VMac 中的改动会双向同步。"}</p>
-                </div>
-                {status.local_vm_storage && !isRemoteClient() && <EnvironmentStorage status={status} onConfirm={onConfirm} />}
+                </div>}
+                {status.local_vm_storage && !isRemoteClient() && <Block when={embedded}><EnvironmentStorage status={status} onConfirm={onConfirm} /></Block>}
                 {!status.upload_only && <>
                 <div className="setting-summary-row">
                   <span>当前项目</span>
@@ -650,11 +660,13 @@ export function SettingsPanel({
                   切换项目只改变新终端和文件编辑器的起始位置；已有终端、网页和登录态会保留。
                 </p>
                 </>}
-                {!status.storage_recovery?.required && <EnvironmentVersions status={status} onConfirm={onConfirm} />}
-                {status.guest_system === "macos" && status.vm_running && !status.storage_recovery?.required &&
-                  <MacOSRecoveryButton onConfirm={onConfirm} disabled={busy || changed} />}
-                {!status.storage_recovery?.required && <EnvironmentCache status={status} onConfirm={onConfirm} />}
-                {status.guest_system === "macos" && <section aria-label="客机系统权限">
+                {!status.storage_recovery?.required && <Block when={embedded}>
+                  <EnvironmentVersions status={status} onConfirm={onConfirm} />
+                  {status.guest_system === "macos" && status.vm_running &&
+                    <MacOSRecoveryButton onConfirm={onConfirm} disabled={busy || changed} />}
+                </Block>}
+                {!status.storage_recovery?.required && <Block when={embedded}><EnvironmentCache status={status} onConfirm={onConfirm} /></Block>}
+                {status.guest_system === "macos" && <section className={embedded ? "vm-subcard" : undefined} aria-label="客机系统权限">
                   <h4>客机系统权限</h4>
                   <p className="field-help">在客机系统设置中完成授权后，返回工作台继续使用。</p>
                   <div className="project-recovery-actions">
@@ -663,9 +675,9 @@ export function SettingsPanel({
                     <MacOSLogin maintenance="input" label="辅助功能权限" disabled={!status.ready || busy} onConfirm={onConfirm} />
                   </div>
                 </section>}
-                {status.guest_system === "macos" && !isRemoteClient() && <MacOSScreenSharingSettings status={status} disabled={!status.ready || busy} onError={setError} onConfirm={onConfirm} />}
-                {!status.storage_recovery?.required && <ResourceSettings status={status} onConfirm={onConfirm} onDirtyChange={setResourceDirty} />}
- <DiagnosticSettings />
+                {status.guest_system === "macos" && !isRemoteClient() && <Block when={embedded}><MacOSScreenSharingSettings status={status} disabled={!status.ready || busy} onError={setError} onConfirm={onConfirm} /></Block>}
+                {!status.storage_recovery?.required && <Block when={embedded}><ResourceSettings status={status} onConfirm={onConfirm} onDirtyChange={setResourceDirty} /></Block>}
+                <Block when={embedded}><DiagnosticSettings /></Block>
                 {status.can_restore && (
                   <button
                     className="text-button"

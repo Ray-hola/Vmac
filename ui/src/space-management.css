@@ -1,43 +1,43 @@
 .space-manager { position: relative; }
-.space-stages { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.space-stages { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; font-size: var(--vm-text-xs); color: var(--muted); white-space: nowrap; }
 .space-stages li { display: flex; align-items: center; gap: 6px; }
-.space-stages li + li::before { content: ""; width: 14px; height: 1px; background: var(--line); }
-.space-stages span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); font-size: 11px; font-variant-numeric: tabular-nums; transition: background var(--vm-mid) var(--vm-ease), border-color var(--vm-mid) var(--vm-ease), color var(--vm-mid); }
+.space-stages li + li::before { content: ""; width: 14px; height: 1px; background: var(--vm-hairline); }
+.space-stages span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--vm-hairline); font-size: .786rem; font-variant-numeric: tabular-nums; transition: background var(--vm-mid) var(--vm-ease), border-color var(--vm-mid) var(--vm-ease), color var(--vm-mid); }
 .space-stages .current { color: var(--ink); font-weight: 600; }
 .space-stages .current span { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .space-stages .done span { border-color: var(--success); background: var(--success); color: var(--paper); }
 .space-disk { margin: 18px 0 4px; padding: 14px 16px; border-radius: 10px; background: var(--well); }
-.space-disk > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.space-disk > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: var(--vm-text-sm); }
 .space-disk > div:first-child span { color: var(--muted); font-variant-numeric: tabular-nums; }
-.space-meter { position: relative; height: 8px; margin-top: 10px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.space-meter { position: relative; height: 8px; margin-top: 10px; border-radius: 4px; background: var(--vm-hairline); overflow: hidden; }
 .space-meter i, .space-meter b { position: absolute; top: 0; bottom: 0; border-radius: 4px; transition: width .6s var(--vm-ease), left .6s var(--vm-ease); }
 .space-meter i { left: 0; background: var(--success); }
 .space-meter b { background: var(--accent); opacity: .85; animation: vm-breathe 1.6s ease-in-out infinite; }
-.space-gate { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
+.space-gate { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--vm-hairline); border-radius: 10px; color: var(--muted); font-size: var(--vm-text-sm); }
 .space-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 0; }
-.space-actions > span { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; animation: vm-fade var(--vm-mid) var(--vm-ease); }
-.space-scanning { display: grid; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 13px; }
-.space-scanning i { position: relative; display: block; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.space-actions > span { color: var(--muted); font-size: var(--vm-text-sm); font-variant-numeric: tabular-nums; animation: vm-fade var(--vm-mid) var(--vm-ease); }
+.space-scanning { display: grid; gap: 8px; margin-top: 14px; color: var(--muted); font-size: var(--vm-text-sm); }
+.space-scanning i { position: relative; display: block; height: 3px; border-radius: 2px; background: var(--vm-hairline); overflow: hidden; }
 .space-scanning i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 34%; border-radius: 2px; background: var(--accent); animation: vm-indeterminate 1.3s var(--vm-ease) infinite; }
-.space-note { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; margin: 12px 0 0; }
-.space-results { margin-top: 16px; padding: 14px 16px; border-radius: 10px; background: var(--success-soft); color: var(--ink); font-size: 13px; animation: vm-rise var(--vm-slow) var(--vm-ease); }
+.space-note { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--vm-text-sm); margin: 12px 0 0; }
+.space-results { margin-top: 16px; padding: 14px 16px; border-radius: 10px; background: var(--success-soft); color: var(--ink); font-size: var(--vm-text-sm); animation: vm-rise var(--vm-slow) var(--vm-ease); }
 .space-results strong { display: flex; align-items: center; gap: 6px; color: var(--success); }
 .space-results p { margin: 6px 0 0; color: var(--muted); }
-.space-list-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 22px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
-.space-select-all { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--ink); font-weight: 550; }
+.space-list-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 22px; padding-bottom: 10px; border-bottom: 1px solid var(--vm-hairline); font-size: var(--vm-text-xs); color: var(--muted); }
+.space-select-all { display: flex; align-items: center; gap: 9px; font-size: var(--vm-text-sm); color: var(--ink); font-weight: 500; }
 .space-select-all input, .space-list input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); flex-shrink: 0; }
 .space-list { list-style: none; margin: 0; padding: 0; }
-.space-list li { border-bottom: 1px solid var(--line); animation: vm-rise var(--vm-slow) var(--vm-ease) both; animation-delay: calc(var(--i, 0) * 28ms); }
+.space-list li { border-bottom: 1px solid var(--vm-hairline); animation: vm-rise var(--vm-slow) var(--vm-ease) both; animation-delay: calc(var(--i, 0) * 28ms); }
 .space-list label { display: flex; align-items: flex-start; gap: 12px; padding: 12px 6px; margin: 0 -6px; border-radius: 8px; transition: background var(--vm-fast); }
 .space-list label:hover { background: var(--hover); }
 .space-list input { margin-top: 3px; }
 .space-list label > span:nth-child(2) { flex: 1; min-width: 0; }
-.space-list strong { display: block; font-size: 14px; font-weight: 550; overflow-wrap: anywhere; }
-.space-list small { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.space-list strong { display: block; font-size: var(--vm-text-md); font-weight: 500; overflow-wrap: anywhere; }
+.space-list small { display: block; font-size: var(--vm-text-xs); color: var(--muted); overflow-wrap: anywhere; }
 .space-list .protected label { opacity: .7; }
 .space-protected { margin-top: 2px; }
-.space-size { flex-shrink: 0; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--muted); }
-.space-review { position: sticky; bottom: -36px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px -8px 0; padding: 10px 10px 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(8px); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; transition: background var(--vm-mid), border-color var(--vm-mid), box-shadow var(--vm-mid); }
-.space-review.armed { color: var(--ink); border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); background: color-mix(in srgb, #f6e9e2 80%, var(--card)); box-shadow: var(--vm-shadow); }
+.space-size { flex-shrink: 0; font-size: var(--vm-text-sm); font-variant-numeric: tabular-nums; color: var(--muted); }
+.space-review { position: sticky; bottom: -36px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px -8px 0; padding: 10px 10px 10px 16px; border: 1px solid var(--vm-hairline); border-radius: 12px; background: color-mix(in oklab, var(--card) 92%, transparent); backdrop-filter: blur(8px); font-size: var(--vm-text-sm); color: var(--muted); font-variant-numeric: tabular-nums; transition: background var(--vm-mid), border-color var(--vm-mid), box-shadow var(--vm-mid); }
+.space-review.armed { color: var(--ink); border-color: color-mix(in oklab, var(--accent) 30%, var(--vm-hairline)); background: color-mix(in oklab, var(--accent-soft) 70%, var(--card)); box-shadow: var(--vm-shadow); }
 .space-review strong { color: var(--accent); }
-.space-footnote { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
+.space-footnote { margin: 12px 0 0; font-size: var(--vm-text-xs); color: var(--muted); }

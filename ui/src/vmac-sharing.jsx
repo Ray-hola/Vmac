@@ -34,7 +34,7 @@ export function SharingPage() {
     }
   }
   return <>
-    <Group title="共享">
+    <Group label="共享">
       {switches.map(([key, title, detail]) => <Row key={key} title={title} detail={detail}>
         <Toggle label={title} checked={values?.[key] ?? true} disabled={!values} onChange={value => change(key, value)} />
       </Row>)}

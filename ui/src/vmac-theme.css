@@ -14,8 +14,27 @@
   --button-hover: #2f56e8; --button-active: #2648cc;
   --ok-dot: #22c55e; --warn-dot: #f59e0b; --bad-dot: #f25a5a;
   --accent-soft: #e4edfd; --success-soft: rgba(34, 197, 94, .12); --warn-soft: rgba(245, 158, 11, .12); --danger-soft: rgba(242, 90, 90, .12);
-  --radius-group: 12px; --radius-control: 8px; --radius-tag: 6px;
-  --vm-ease: cubic-bezier(.2, .8, .2, 1); --vm-fast: 120ms; --vm-mid: 200ms; --vm-slow: 320ms;
-  --vm-shadow: 0 1px 2px rgba(15, 17, 21, .04), 0 8px 24px rgba(15, 17, 21, .08);
+  /* Type scale. The root size is the interface text size (14px unless the
+     user changes it), so sizes in rem follow that setting on every page. */
+  --vm-text-xs: .857rem; --vm-text-sm: .929rem; --vm-text-md: 1rem; --vm-text-lg: 1.143rem; --vm-text-xl: 1.429rem; --vm-text-2xl: 1.857rem;
+  /* Edges. A card's hairline is decoration; the edge of a field is what
+     shows where to type, so it keeps 3:1 against the page. */
+  --vm-hairline: rgba(15, 17, 21, .09); --vm-button-border: #d9dce1; --vm-control-border: #8b9098;
+  --radius-group: 14px; --radius-control: 10px; --radius-tag: 6px;
+  /* Depth is built from stacked soft shadows. */
+  --vm-shadow-xs: 0 1px 2px rgba(15, 17, 21, .04);
+  --vm-shadow: 0 1px 2px rgba(15, 17, 21, .05), 0 4px 12px rgba(15, 17, 21, .06), 0 16px 40px rgba(15, 17, 21, .08);
+  /* Motion: three durations and one curve. --vm-move scales every distance
+     and turns to 0 when motion is reduced, which leaves plain fades. */
+  --vm-ease: cubic-bezier(.2, .8, .2, 1); --vm-fast: 120ms; --vm-mid: 200ms; --vm-slow: 320ms; --vm-move: 1;
   color-scheme: light !important;
+}
+:root.vmac-theme[data-reduced-motion="true"] { --vm-move: 0; }
+@media (prefers-reduced-motion: reduce) {
+  :root.vmac-theme { --vm-move: 0; }
+}
+/* Windows High Contrast and similar modes replace the palette: draw every
+   edge with the system's own colors so nothing depends on a shadow or tint. */
+@media (forced-colors: active) {
+  :root.vmac-theme { --vm-hairline: CanvasText; --vm-button-border: ButtonText; --vm-control-border: ButtonText; --line: CanvasText !important; --accent: Highlight !important; }
 }

@@ -38,11 +38,12 @@ export function pageFor(destination) {
   return aliases[destination] || "overview";
 }
 
-// The sections of the old settings panel that a page shows in place.
+// The sections of the old settings panel that a page shows in place. The
+// general page draws the display settings itself, so "appearance" is not here.
 const embedded = {
   system: ["region"],
   proxy: ["network"],
-  general: ["keyboard", "appearance"],
+  general: ["keyboard"],
   security: ["account", "vault", "mobile"],
   recovery: ["project", "archived-sessions"],
   about: ["about"],

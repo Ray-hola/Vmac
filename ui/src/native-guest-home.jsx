@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { CircleAlert } from "lucide-react";
 
 import { api, native } from "./api";
 import { useAccount } from "./account";
@@ -13,15 +15,11 @@ import { GeneralPage } from "./vmac-general";
 import { SharingPage } from "./vmac-sharing";
 import { SpaceManagement } from "./space-management";
 import { DiskCapacity, GuestInputSources, GuestLoginDetails, GuestTimezone, VMProfiles } from "./vmac-management";
-import { ChecksPage, protectionText, protectionTone, useVMacProtection } from "./vmac-checks";
-import { GuestOverview, guestPhase } from "./vmac-overview";
-import { PageHeader, StatusChip } from "./vmac-ui";
+import { ChecksPage, useVMacProtection } from "./vmac-checks";
+import { GuestOverview } from "./vmac-overview";
+import { PageHeader } from "./vmac-ui";
 import "./vmac-theme.css";
 import "./native-guest-home.css";
-
-const phaseChip = {
-  busy: ["busy", "处理中"], ready: ["ok", "已就绪"], connecting: ["busy", "连接中"], failed: ["bad", "未完成"], stopped: ["idle", "已停止"],
-};
 
 export function NativeGuestHome({ setup = null }) {
   const { account } = useAccount();
@@ -33,11 +31,9 @@ export function NativeGuestHome({ setup = null }) {
   const [settingsVersion, setSettingsVersion] = useState(0);
   const loadedSettings = useRef(null);
   const pendingAnchor = useRef(null);
-  const [anchorRequest, setAnchorRequest] = useState(0);
   const [profile, setProfile] = useState("");
   const [disk, setDisk] = useState(null);
   const diskSize = useRef(null);
-  const [scrolled, setScrolled] = useState(false);
   const protection = useVMacProtection(page === "proxy" || page === "checks", status?.safety?.gate);
   const [error, setError] = useState("");
   const [request, setRequest] = useState(false);
@@ -67,8 +63,11 @@ export function NativeGuestHome({ setup = null }) {
   function choosePage(value) {
     if (value !== currentPage.current) settingsDirty.current = {};
     if (settingsNeedReload({ entering: value, leaving: currentPage.current })) void refreshSettings();
+    const changed = value !== currentPage.current;
     currentPage.current = value;
-    setPage(value);
+    // One page gives way to the next with a cross-fade where the browser can do it.
+    if (changed && document.startViewTransition) document.startViewTransition(() => flushSync(() => setPage(value)));
+    else setPage(value);
     // Keep the native sidebar selection in step with in-page navigation.
     void publishNavigation(latest.current).catch(() => {});
   }
@@ -131,10 +130,10 @@ export function NativeGuestHome({ setup = null }) {
     automatic.current = false;
     setError("");
     if (target === "checks" && checksSection) setChecksTab(checksSection);
-    if (anchor) {
-      pendingAnchor.current = anchor;
-      setAnchorRequest(count => count + 1);
-    }
+    // A jump within the page scrolls at once; one to another page scrolls
+    // when that page is on screen.
+    if (anchor && target === currentPage.current) followAnchor(anchor);
+    else pendingAnchor.current = anchor || null;
     choosePage(target);
     if (opensDesktop(destination, { ready: latest.current?.ready, setup: setupActive.current })) await openDesktop();
   }
@@ -330,19 +329,15 @@ export function NativeGuestHome({ setup = null }) {
     void publishNavigation(latest.current).catch(() => {});
   }, [disk]);
   const network = status && networkState(status);
-  const phase = status ? guestPhase(status, request) : "stopped";
   const issue = error || (!status?.job?.running && (status?.job?.error || (status?.vm_running && status?.environment_update_error)));
   const showSetup = Boolean(setup && lifecycle);
   const pageKey = page;
   const scroller = useRef(null);
-  // A page opens at its top, unless the jump named a form further down.
-  useEffect(() => {
-    const id = pendingAnchor.current;
-    pendingAnchor.current = null;
+  // Scrolls a form into view and keeps it there: what sits above it may still
+  // be loading and push it down, until the page settles or the user takes over.
+  function followAnchor(id) {
     const view = scroller.current;
-    if (!id || !document.getElementById(id)) { view?.scrollTo({ top: 0 }); return undefined; }
-    // What sits above the form may still be loading and push it down: keep it
-    // in place until the page settles or the user takes over.
+    if (!view || !document.getElementById(id)) return undefined;
     const follow = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
     follow();
     const observer = new ResizeObserver(follow);
@@ -356,22 +351,22 @@ export function NativeGuestHome({ setup = null }) {
     const timer = setTimeout(release, 3000);
     for (const kind of ["wheel", "touchstart", "keydown", "mousedown"]) view.addEventListener(kind, release, { passive: true });
     return release;
-  }, [pageKey, anchorRequest]);
-  const chip = !status ? null
-    : lifecycle ? <StatusChip tone={phaseChip[phase][0]}>{phaseChip[phase][1]}</StatusChip>
-    : page === "checks" ? <StatusChip tone={protectionTone[protection.state] || "idle"}>{protectionText(protection)}</StatusChip>
-    : page === "proxy" ? null
-    : <StatusChip tone={phaseChip[phase][0]}>{profile || "macOS 客机"} · {phaseChip[phase][1]}</StatusChip>;
-  return <main ref={scroller} className={showSetup ? "native-guest-home native-setup-home" : "native-guest-home"}
-    onScroll={event => setScrolled(event.currentTarget.scrollTop > 4)} data-scrolled={scrolled || undefined}
-    data-wide={page === "proxy" || page === "checks" || undefined}>
-    {!showSetup && <PageHeader title={pages[page].title} aside={chip}
-      subtitle={lifecycle ? (profile ? `${profile} · 运行状态和常用操作` : "运行状态和常用操作") : pages[page].subtitle} />}
+  }
+  // A page opens at its top, unless the jump named a form further down.
+  useEffect(() => {
+    const id = pendingAnchor.current;
+    pendingAnchor.current = null;
+    const release = id && followAnchor(id);
+    if (!release) scroller.current?.scrollTo({ top: 0 });
+    return release || undefined;
+  }, [pageKey]);
+  return <main ref={scroller} className={showSetup ? "native-guest-home native-setup-home" : "native-guest-home"}>
+    {!showSetup && <PageHeader title={pages[page].title} subtitle={pages[page].subtitle} />}
     {setup && <div className="native-setup-content" hidden={!showSetup}>{setup}</div>}
-    {!showSetup && issue && <div className="vm-banner" role="alert"><span>{issue}</span><button onClick={() => { setError(""); void pollNow.current?.(); void refreshSettings(); }}>重新检查</button></div>}
+    {!showSetup && issue && <div className="vm-banner" role="alert"><CircleAlert size={17} aria-hidden="true" /><span>{issue}</span><button onClick={() => { setError(""); void pollNow.current?.(); void refreshSettings(); }}>重新检查</button></div>}
     {!showSetup && <div className="vm-page" key={pageKey}>
       {!status ? <div className="vm-skeleton" role="status" aria-label="正在读取客机状态"><span /><span /><span /></div> :
-      lifecycle ? <GuestOverview status={status} network={network} request={request} disk={disk}
+      lifecycle ? <GuestOverview name={profile || "macOS 客机"} status={status} network={network} request={request} disk={disk}
         onStart={() => lifecycleAction.current?.("start")} onRestart={() => lifecycleAction.current?.("restart")}
         onStop={stop} onOpen={() => openDesktop()} onNavigate={navigate} /> :
       page === "machines" ? <>

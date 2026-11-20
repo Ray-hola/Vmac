@@ -635,6 +635,12 @@ export function AccountMenu({ onSettings, onConfirm, onStatus, busy }) {
   );
 }
 
+// In VMac a form that is rarely needed stays folded until it is asked for.
+function Fold({ title, children }) {
+  if (!window.cageNativeVMWorkbench) return children;
+  return <details className="vm-disclosure"><summary>{title}</summary><div className="vm-disclosure-body">{children}</div></details>;
+}
+
 export function AccountSettings({ busy: environmentBusy, onDirty }) {
   const { account, act, refresh } = useAccount();
   const [name, setName] = useState(account.username),
@@ -799,6 +805,7 @@ export function AccountSettings({ busy: environmentBusy, onDirty }) {
       </form>
       {feedbackTarget === "profile" && feedback}
       <div className="account-section-divider" />
+      <Fold title={account.trusted_local ? "设置账户密码" : "修改账户密码"}>
       <form onSubmit={(event) => save(event, true)}>
         <fieldset disabled={busy || environmentBusy}>
           <h4>账户密码</h4>
@@ -832,9 +839,10 @@ export function AccountSettings({ busy: environmentBusy, onDirty }) {
       </form>
 
       {feedbackTarget === "password" && feedback}
-      {!account.trusted_local && <AccountRecoverySettings disabled={busy || environmentBusy} onDirty={setRecoveryDirty} />}
-      {localDesktop() && !account.trusted_local && <TrustedDeviceSettings />}
-      {!account.trusted_local && <AccountDeviceSettings />}
+      </Fold>
+      {!account.trusted_local && <Fold title="恢复密钥"><AccountRecoverySettings disabled={busy || environmentBusy} onDirty={setRecoveryDirty} /></Fold>}
+      {localDesktop() && !account.trusted_local && <Fold title="记住我"><TrustedDeviceSettings /></Fold>}
+      {!account.trusted_local && <Fold title="登录与解锁"><AccountDeviceSettings /></Fold>}
       <p className="account-settings-note">
         <LockKeyhole size={15} />
         {isRemoteClient() ? "账户、应用资料与登录凭据保存在当前云端主机。" : "一个本地账户，一个持久工作环境。资料与凭据不上传到 VMac 服务器。"}

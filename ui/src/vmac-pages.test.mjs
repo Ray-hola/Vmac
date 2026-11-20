@@ -25,8 +25,10 @@ test("every old entry point reaches a page", () => {
 });
 test("every old settings section is embedded in exactly one page", () => {
   const sections = ids.flatMap(id => embeddedSections(id));
-  assert.deepEqual([...sections].sort(), ["about", "account", "appearance", "archived-sessions", "keyboard", "mobile", "network", "project", "region", "vault"]);
-  assert.deepEqual(embeddedSections("general"), ["keyboard", "appearance"]);
+  // "appearance" is the exception: the general page draws those settings itself.
+  assert.deepEqual([...sections].sort(), ["about", "account", "archived-sessions", "keyboard", "mobile", "network", "project", "region", "vault"]);
+  assert.deepEqual(embeddedSections("general"), ["keyboard"]);
+  assert.equal(pageFor("appearance"), "general");
   assert.deepEqual(embeddedSections("overview"), []);
 });
 
