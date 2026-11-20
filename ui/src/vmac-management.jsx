@@ -53,7 +53,7 @@ export function GuestInputSources({ ready, onOpen }) {
       <span className="vm-card-icon"><Keyboard size={17} aria-hidden="true" /></span>
       <div><h2>客机输入法</h2><p>{ready ? "在客机键盘设置中添加或移除输入法。在客机桌面按 Control + 空格切换。" : "启动并登录 macOS 客机后即可管理输入法。"}</p></div>
     </div></div>
-    <p className="vm-note">在客机桌面里打字时，默认直接使用 Mac 上当前的输入法（例如豆包、搜狗），词库和设置都是 Mac 上那一份。客机这边请保持英文（ABC）输入，避免两边同时转换；不需要时可在菜单栏「文件 → 用 Mac 输入法在客机中打字」关闭。</p>
+    <p className="vm-note">在客机桌面里打字时，默认直接使用 Mac 上当前的输入法（例如豆包、搜狗），词库和设置都是 Mac 上那一份。客机这边请保持英文（ABC）输入，避免两边同时转换；不需要时可在「共享与传输」里关闭。</p>
     {ready && <>
       {sources && <dl className="vm-guest-details">
         <div><dt>当前输入法</dt><dd>{sources.selected.map(id => inputSourceNames[id] || id).join("、") || "暂未读取到"}</dd></div>

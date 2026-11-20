@@ -29,6 +29,17 @@ enum VMacShellTests {
         let stopped = VMacGuestActions(running: false, ready: false)
         precondition(!stopped.upload && !stopped.lifecycle)
 
+        let suite = "cn.ovenray.vmac.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        precondition(VMacPreference.allCases.allSatisfy { $0.value(in: defaults) }, "every sharing switch starts on")
+        VMacPreference.fileDrop.set(false, in: defaults)
+        precondition(!VMacPreference.fileDrop.value(in: defaults))
+        precondition(VMacPreference.shareClipboardContent.value(in: defaults) && VMacPreference.hostInputMethod.value(in: defaults))
+        precondition(VMacPreference.all(in: defaults) == ["shareClipboardContent": true, "hostInputMethod": true, "fileDrop": false])
+        precondition(VMacPreference.fileDrop.defaultsKey == "vmac.fileDrop" && VMacPreference.shareClipboardContent.defaultsKey == "vmac.shareClipboardContent")
+        precondition(VMacPreference(rawValue: "other") == nil)
+
         var toast = VMacToastModel()
         precondition(!toast.visible)
         precondition(toast.show("已上传", kind: .info) == 3 && toast.visible && toast.text == "已上传")

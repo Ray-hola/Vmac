@@ -45,6 +45,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private var preferredSidebarWidth: CGFloat = 220
     private var shell = VMacShellState()
     private var shellMenuItems: [VMacMenuKey: NSMenuItem] = [:]
+    private var preferenceMenuItems: [VMacPreference: NSMenuItem] = [:]
     private var accountDeviceBusy = false
     private var expectedPort = 0
     private var allowQuit = false
@@ -286,9 +287,9 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         if nativeVMWorkbench {
             file.addItem(.separator())
             let clipboard = file.addItem(withTitle: "共享剪贴板（文字、图片和文件）", action: #selector(toggleGuestClipboard(_:)), keyEquivalent: "")
-            clipboard.state = Self.vmacPreference("vmac.shareClipboardContent") ? .on : .off
             let input = file.addItem(withTitle: "用 Mac 输入法在客机中打字", action: #selector(toggleHostInputMethod(_:)), keyEquivalent: "")
-            input.state = Self.vmacPreference("vmac.hostInputMethod") ? .on : .off
+            preferenceMenuItems = [.shareClipboardContent: clipboard, .hostInputMethod: input]
+            refreshPreferenceMenu()
             for (title, action) in [
                 ("上传文件到客机…", "upload"),
                 ("传文字或图片到客机", "clipboard-to-guest"),
@@ -456,23 +457,33 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         #endif
     }
 
-    // Clipboard sharing and the Mac input method default to on.
-    private static func vmacPreference(_ key: String) -> Bool {
-        UserDefaults.standard.object(forKey: key) == nil || UserDefaults.standard.bool(forKey: key)
+    private func refreshPreferenceMenu() {
+        for (preference, item) in preferenceMenuItems {
+            item.state = preference.value(in: .standard) ? .on : .off
+        }
+    }
+    /// One path for a sharing switch, whether it came from the File menu or
+    /// the sharing page: store it, apply it, and keep both in step.
+    private func setPreference(_ preference: VMacPreference, _ enabled: Bool, announce: Bool) {
+        preference.set(enabled, in: .standard)
+        refreshPreferenceMenu()
+        publishWindowVisibility()
+        webView.evaluateJavaScript("window.dispatchEvent(new Event('vmac-preferences-changed'));", completionHandler: nil)
+        guard announce else { return }
+        switch preference {
+        case .shareClipboardContent:
+            toast?.show(enabled ? "客机桌面可见时，复制的文字、图片和文件会双向同步" : "剪贴板共享已关闭", kind: .info)
+        case .hostInputMethod:
+            toast?.show(enabled ? "在客机里打字时使用 Mac 当前的输入法；客机请切换到英文（ABC）输入" : "已改用客机自己的输入法", kind: .info)
+        case .fileDrop:
+            break
+        }
     }
     @objc private func toggleGuestClipboard(_ sender: NSMenuItem) {
-        let enabled = sender.state != .on
-        sender.state = enabled ? .on : .off
-        UserDefaults.standard.set(enabled, forKey: "vmac.shareClipboardContent")
-        publishWindowVisibility()
-        toast?.show(enabled ? "客机桌面可见时，复制的文字、图片和文件会双向同步" : "剪贴板共享已关闭", kind: .info)
+        setPreference(.shareClipboardContent, sender.state != .on, announce: true)
     }
     @objc private func toggleHostInputMethod(_ sender: NSMenuItem) {
-        let enabled = sender.state != .on
-        sender.state = enabled ? .on : .off
-        UserDefaults.standard.set(enabled, forKey: "vmac.hostInputMethod")
-        publishWindowVisibility()
-        toast?.show(enabled ? "在客机里打字时使用 Mac 当前的输入法；客机请切换到英文（ABC）输入" : "已改用客机自己的输入法", kind: .info)
+        setPreference(.hostInputMethod, sender.state != .on, announce: true)
     }
 
     private func installVMacToolbar() {
@@ -814,6 +825,14 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             guard nativeVMWorkbench else { replyHandler(nil, "此版本不支持原生客机工作台"); return }
             guestSidebar?.select("desktop")
             guestDesktopCommand(replyHandler)
+        case "vmacPreferences":
+            guard nativeVMWorkbench else { replyHandler(nil, "需要 VMac 本机工作台"); return }
+            replyHandler(VMacPreference.all(in: .standard), nil)
+        case "vmacSetPreference":
+            guard nativeVMWorkbench, let key = body["key"] as? String, let preference = VMacPreference(rawValue: key),
+                  let value = body["value"] as? Bool else { replyHandler(nil, "无法识别这项设置"); return }
+            setPreference(preference, value, announce: false)
+            replyHandler(VMacPreference.all(in: .standard), nil)
         case "vmacProfiles":
             guard nativeVMWorkbench else { replyHandler(nil, "需要 VMac 本机工作台"); return }
             replyHandler(CageProfile.profileList(), nil)

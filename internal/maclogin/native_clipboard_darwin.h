@@ -93,13 +93,14 @@ static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
     return text ? clipboardFilesCommand(@[@"cache", text], NULL) : nil;
 }
 
-// Both default to on; the File menu stores an explicit choice.
+// All default to on; the File menu and the sharing page store an explicit choice.
 static BOOL vmacPreference(NSString *key) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     return [defaults objectForKey:key] == nil || [defaults boolForKey:key];
 }
 static BOOL clipboardSharingEnabled(void) { return vmacPreference(@"vmac.shareClipboardContent"); }
 static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInputMethod"); }
+static BOOL fileDropEnabled(void) { return vmacPreference(@"vmac.fileDrop"); }
 
 @interface CageDesktopClipboard : NSObject
 @property(nonatomic, readonly) BOOL canTypeText;

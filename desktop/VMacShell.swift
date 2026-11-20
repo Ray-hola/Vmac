@@ -50,6 +50,21 @@ struct VMacGuestActions: Equatable {
     }
 }
 
+/// The switches of the sharing page. Each is stored in the app's defaults and
+/// counts as on until it is turned off.
+enum VMacPreference: String, CaseIterable {
+    case shareClipboardContent, hostInputMethod, fileDrop
+
+    var defaultsKey: String { "vmac." + rawValue }
+    func value(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: defaultsKey) == nil || defaults.bool(forKey: defaultsKey)
+    }
+    func set(_ value: Bool, in defaults: UserDefaults) { defaults.set(value, forKey: defaultsKey) }
+    static func all(in defaults: UserDefaults) -> [String: Bool] {
+        Dictionary(uniqueKeysWithValues: allCases.map { ($0.rawValue, $0.value(in: defaults)) })
+    }
+}
+
 enum VMacToastKind { case info, error }
 
 /// The rules for the toast over the guest. An error stays until it is

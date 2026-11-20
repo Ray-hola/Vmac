@@ -66,7 +66,7 @@ static BOOL plainASCII(NSString *text) {
 // A press that leaves the picture may be a guest file drag. The guest names
 // the files it is dragging, if any, once per press.
 - (void)askGuestForDrag {
-    if (!self.virtualMachine || self.owner.pane.hidden) return;
+    if (!fileDropEnabled() || !self.virtualMachine || self.owner.pane.hidden) return;
     NSUInteger press = _presses;
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -509,7 +509,7 @@ static BOOL plainASCII(NSString *text) {
     return YES;
 }
 - (BOOL)acceptDrop:(id<NSDraggingInfo>)sender perform:(BOOL)perform {
-    if (self.busy || self.pane.hidden || !self.view.virtualMachine || self.window.attachedSheet ||
+    if (!fileDropEnabled() || self.busy || self.pane.hidden || !self.view.virtualMachine || self.window.attachedSheet ||
         !(sender.draggingSourceOperationMask & NSDragOperationCopy)) return NO;
     NSPasteboard *board = sender.draggingPasteboard;
     NSDictionary *options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};

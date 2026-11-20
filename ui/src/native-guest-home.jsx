@@ -9,6 +9,7 @@ import { opensDesktop, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
 import { embeddedSections, pageFor, pages } from "./vmac-pages.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
+import { SharingPage } from "./vmac-sharing";
 import { SpaceManagement } from "./space-management";
 import { DiskCapacity, GuestInputSources, GuestLoginDetails, GuestTimezone, VMProfiles } from "./vmac-management";
 import { ChecksPage, protectionText, protectionTone, useVMacProtection } from "./vmac-checks";
@@ -331,7 +332,8 @@ export function NativeGuestHome({ setup = null }) {
           onSettings={() => document.getElementById("vmac-region")?.scrollIntoView({ behavior: "smooth", block: "start" })}
           onRestart={() => lifecycleAction.current?.("restart")} />
         <GuestInputSources ready={status.ready} onOpen={() => openDesktop("desktop", false)} />
-      </> : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
+      </> : page === "sharing" ? <SharingPage />
+      : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
           onConfirm={confirm} onSettings={openSettings} onInstall={setup && !installed ? () => navigate("overview") : undefined} />
       : page === "proxy" ? <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}
           onApplied={() => { void pollNow.current?.(); void refreshSettings(); }} onChecks={() => navigate("checks", "gateway")} protection={protection} />
