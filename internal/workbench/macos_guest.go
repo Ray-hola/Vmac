@@ -38,6 +38,10 @@ func macOSWorkbenchRoute(path string) bool {
 		return true
 	case "/api/macos/input-sources":
 		return true
+	case "/api/client/context":
+		// Guests never route to a remote host; the controller answers 404 so
+		// native file transfers bind to the local workload.
+		return true
 	}
 	return strings.HasPrefix(path, "/api/macos/claude/") || strings.HasPrefix(path, "/api/macos-browser/")
 }

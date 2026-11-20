@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -608,12 +607,7 @@ func ClipboardFilesForConnection(configPath, connectionID, operation string, arg
 		return nil, err
 	}
 	defer client.close()
-	entry, _ := url.Parse(client.launch.URL)
-	status, err := client.call("POST", "/api/session", map[string]string{"token": entry.Fragment}, nil)
-	if err != nil || status != http.StatusOK {
-		return nil, errors.New("无法连接剪贴板会话")
-	}
-	if _, err = client.bindConnection(connectionID); err != nil {
+	if err = client.openFileSession(connectionID); err != nil {
 		return nil, err
 	}
 	client.client.Timeout = 30 * time.Minute
