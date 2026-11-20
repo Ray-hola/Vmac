@@ -253,33 +253,33 @@ private func dropTarget(_ request: [String: Any]) throws -> [String: Any] {
     guard frame.width > 0, frame.height > 0 else { return desktop }
     let point = CGPoint(x: frame.minX + x * frame.width, y: y * frame.height)
     guard let windows = finderWindows() else { GuestDiagnostic.record("clipboard", "drop_finder_query_failed"); return desktop }
-    // The window the system hit-tests there wins when it is a Finder window;
-    // otherwise the frontmost Finder window under the point does. Other
-    // applications' windows are not visible to the agent.
-    let top = onGUI { NSWindow.windowNumber(at: NSPoint(x: point.x, y: frame.maxY - point.y), belowWindowWithWindowNumber: 0) }
-    let hit = windows.first(where: { $0.id == top && $0.bounds.contains(point) }) ?? windows.first(where: { $0.bounds.contains(point) })
-    let topKind = windows.contains(where: { $0.id == top }) ? "finder" : top > 0 ? "other" : "none"
-    GuestDiagnostic.record("clipboard", "drop_finder_windows_\(windows.count)_\(hit == nil ? "miss" : "hit")_top_\(topKind)")
+    // Finder lists its windows front to back; the first one under the point
+    // takes the drop. Other applications' windows are not visible to the
+    // agent, and Finder window ids are not system window numbers.
+    let hit = windows.first(where: { $0.bounds.contains(point) })
+    GuestDiagnostic.record("clipboard", "drop_finder_windows_\(windows.count)_\(hit == nil ? "miss" : "hit")")
     guard let hit else { return desktop }
     return ["path": hit.path, "kind": "finder"]
 }
 
-private struct FinderWindow { let id: Int; let bounds: CGRect; let path: String }
+private struct FinderWindow { let bounds: CGRect; let path: String }
 
 // Finder lists its windows front to back with bounds in the same top-left
 // coordinates, and each folder as a percent-encoded file URL so the output
-// stays ASCII whatever the user's text encoding. The first request waits for
-// the user's one-time consent to control Finder, so it runs in osascript
-// rather than on the GUI thread. Nil means Finder could not be asked.
+// stays ASCII whatever the user's text encoding. Windows are addressed by
+// index: a "repeat with w in every Finder window" reference cannot reach the
+// window's target on recent macOS. The first request waits for the user's
+// one-time consent to control Finder, so it runs in osascript rather than on
+// the GUI thread. Nil means Finder could not be asked.
 private func finderWindows() -> [FinderWindow]? {
     let source = """
     tell application "Finder"
         set out to ""
-        repeat with w in (every Finder window)
+        repeat with i from 1 to (count of Finder windows)
             try
+                set w to Finder window i
                 set b to bounds of w
-                set u to URL of (target of w)
-                set out to out & (id of w) & "," & (item 1 of b) & "," & (item 2 of b) & "," & (item 3 of b) & "," & (item 4 of b) & tab & u & linefeed
+                set out to out & (item 1 of b) & "," & (item 2 of b) & "," & (item 3 of b) & "," & (item 4 of b) & tab & (URL of (target of w)) & linefeed
             end try
         end repeat
         return out
@@ -300,10 +300,10 @@ private func finderWindows() -> [FinderWindow]? {
     let windows = lines.compactMap { line -> FinderWindow? in
         let parts = line.split(separator: "\t", maxSplits: 1)
         let fields = parts.first?.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) } ?? []
-        guard parts.count == 2, fields.count == 5, let url = URL(string: String(parts[1]).trimmingCharacters(in: .whitespaces)), url.isFileURL else { return nil }
+        guard parts.count == 2, fields.count == 4, let url = URL(string: String(parts[1]).trimmingCharacters(in: .whitespaces)), url.isFileURL else { return nil }
         var directory: ObjCBool = false
         guard url.path.hasPrefix("/"), FileManager.default.fileExists(atPath: url.path, isDirectory: &directory), directory.boolValue else { return nil }
-        return FinderWindow(id: Int(fields[0]), bounds: CGRect(x: fields[1], y: fields[2], width: fields[3] - fields[1], height: fields[4] - fields[2]), path: url.path)
+        return FinderWindow(bounds: CGRect(x: fields[0], y: fields[1], width: fields[2] - fields[0], height: fields[3] - fields[1]), path: url.path)
     }
     if windows.count < lines.count { GuestDiagnostic.record("clipboard", "drop_finder_unparsed_\(lines.count - windows.count)_of_\(lines.count)") }
     return windows
