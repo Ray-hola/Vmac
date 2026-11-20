@@ -39,6 +39,7 @@ static BOOL plainASCII(NSString *text) {
     NSEvent *_dragEvent;
     NSUInteger _presses;
     BOOL _leftPicture;
+    NSView *_dropOutline;
 }
 // The guest's caret is invisible to the Mac; the last click in the guest is
 // the best estimate of where text goes, so the composition follows it.
@@ -136,13 +137,46 @@ static BOOL plainASCII(NSString *text) {
     }
     return self;
 }
+// A blue outline shows that files released here will be taken.
+- (void)showDropOutline:(BOOL)shown {
+    if (!shown && !_dropOutline) return;
+    if (!_dropOutline) {
+        _dropOutline = [[NSView alloc] initWithFrame:self.bounds];
+        _dropOutline.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        _dropOutline.wantsLayer = YES;
+        _dropOutline.layer.borderWidth = 3;
+        _dropOutline.layer.cornerRadius = 6;
+        _dropOutline.layer.borderColor = [NSColor colorWithSRGBRed:57 / 255.0 green:100 / 255.0 blue:254 / 255.0 alpha:1].CGColor;
+        _dropOutline.alphaValue = 0;
+        _dropOutline.hidden = YES;
+        [self addSubview:_dropOutline];
+    }
+    if (shown == !_dropOutline.hidden) return;
+    if (shown) _dropOutline.hidden = NO;
+    NSView *outline = _dropOutline;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.12;
+        outline.animator.alphaValue = shown ? 1 : 0;
+    } completionHandler:^{
+        if (outline.alphaValue == 0) outline.hidden = YES;
+    }];
+}
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
-    return [self.owner acceptDrop:sender perform:NO] ? NSDragOperationCopy : NSDragOperationNone;
+    BOOL accepted = [self.owner acceptDrop:sender perform:NO];
+    [self showDropOutline:accepted];
+    return accepted ? NSDragOperationCopy : NSDragOperationNone;
 }
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
     return [self draggingEntered:sender];
 }
+- (void)draggingExited:(id<NSDraggingInfo>)sender {
+    [self showDropOutline:NO];
+}
+- (void)draggingEnded:(id<NSDraggingInfo>)sender {
+    [self showDropOutline:NO];
+}
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    [self showDropOutline:NO];
     return [self.owner acceptDrop:sender perform:YES];
 }
 - (BOOL)routesThroughHostInputMethod:(NSEvent *)event {
