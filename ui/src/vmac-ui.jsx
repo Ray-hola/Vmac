@@ -38,4 +38,25 @@ export function PageHeader({ title, subtitle, aside }) {
   </header>;
 }
 
+// A titled block of rows, in the manner of macOS System Settings.
+export function Group({ title, children }) {
+  return <section className="vm-group" aria-label={title}>
+    {title && <h2 className="vm-group-title">{title}</h2>}
+    <div className="vm-group-rows">{children}</div>
+  </section>;
+}
+
+// One row of a group: what it is on the left, its control or value on the right.
+export function Row({ title, detail, children }) {
+  return <div className="vm-row">
+    <div className="vm-row-text"><span>{title}</span>{detail && <small>{detail}</small>}</div>
+    {children && <div className="vm-row-control">{children}</div>}
+  </div>;
+}
+
+export function Toggle({ checked, onChange, label, disabled = false }) {
+  return <button type="button" className="vm-toggle" role="switch" aria-checked={Boolean(checked)} aria-label={label}
+    disabled={disabled} onClick={() => onChange(!checked)}><span aria-hidden="true" /></button>;
+}
+
 export const gib = bytes => Number((bytes / 2 ** 30).toFixed(bytes % 2 ** 30 ? 2 : 0));

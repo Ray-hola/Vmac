@@ -307,7 +307,8 @@ export function NativeGuestHome({ setup = null }) {
     : page === "proxy" ? null
     : <StatusChip tone={phaseChip[phase][0]}>{profile || "macOS 客机"} · {phaseChip[phase][1]}</StatusChip>;
   return <main ref={scroller} className={showSetup ? "native-guest-home native-setup-home" : "native-guest-home"}
-    onScroll={event => setScrolled(event.currentTarget.scrollTop > 4)} data-scrolled={scrolled || undefined}>
+    onScroll={event => setScrolled(event.currentTarget.scrollTop > 4)} data-scrolled={scrolled || undefined}
+    data-wide={page === "proxy" || page === "checks" || undefined}>
     {!showSetup && <PageHeader title={pages[page].title} aside={chip}
       subtitle={lifecycle ? (profile ? `${profile} · 运行状态和常用操作` : "运行状态和常用操作") : pages[page].subtitle} />}
     {setup && <div className="native-setup-content" hidden={!showSetup}>{setup}</div>}
