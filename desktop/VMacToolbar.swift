@@ -151,6 +151,7 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate, NSPopoverDelegat
     private var popoverClosedAt: TimeInterval = 0
     private var items: [NSToolbarItem.Identifier: NSToolbarItem] = [:]
     private var controlCenterActive = true
+    private var toggleEnabled = true
     private var guestActions = VMacGuestActions(running: false, ready: false)
 
     private static let toggle = NSToolbarItem.Identifier("vmac.controlCenter")
@@ -182,6 +183,11 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate, NSPopoverDelegat
         controlCenterActive = active
         refreshToggle()
     }
+    /// The switch has nothing to do while there is no guest desktop to return to.
+    func setToggleEnabled(_ enabled: Bool) {
+        toggleEnabled = enabled
+        refreshToggle()
+    }
     func setGuestActions(_ actions: VMacGuestActions) {
         guestActions = actions
         items[Self.upload]?.isEnabled = actions.upload
@@ -210,7 +216,8 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate, NSPopoverDelegat
         let label = controlCenterActive ? "回到桌面" : "控制中心"
         item.image = symbol("sidebar.left", label, tint: controlCenterActive ? CagePalette.accent : nil)
         item.label = label
-        item.toolTip = controlCenterActive ? "回到客机桌面（⌃⌘,）" : "打开控制中心（⌃⌘,）"
+        item.toolTip = !toggleEnabled ? "客机就绪后可以回到桌面" : controlCenterActive ? "回到客机桌面（⌃⌘,）" : "打开控制中心（⌃⌘,）"
+        item.isEnabled = toggleEnabled
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

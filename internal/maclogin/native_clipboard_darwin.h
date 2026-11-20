@@ -1,4 +1,5 @@
 #include "clipboard_baseline.h"
+#include "drag_out_summary.h"
 
 static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) {
     if ((automatic && ([board.types containsObject:@"org.nspasteboard.ConcealedType"] ||
@@ -469,6 +470,7 @@ static NSURL *unusedFileURL(NSURL *url) {
     NSString *_cache;
     NSString *_failure;
     NSUInteger _remaining;
+    NSUInteger _failed;
     BOOL _fetched;
     BOOL _released;
 }
@@ -550,10 +552,19 @@ static NSURL *unusedFileURL(NSURL *url) {
     } else {
         [NSFileManager.defaultManager moveItemAtURL:[NSURL fileURLWithPath:source] toURL:unusedFileURL(url) error:&error];
     }
+    if (error) _failed++;
     if (--_remaining == 0 && _cache.length) clipboardCacheCommand(@"release", _cache);
-    NSString *notice = error ? (_failure ?: @"有文件没能从客机拷出，请重试") :
-        !_remaining ? [NSString stringWithFormat:@"已从客机拷出 %lu 项", (unsigned long)_names.count] : nil;
-    if (notice) dispatch_async(dispatch_get_main_queue(), ^{ if (error) clipboardError(notice); else clipboardNotice(notice); });
+    // A failed item is reported at once, in case nothing asks for the rest.
+    // The closing notice counts the failures, so that an item which arrives
+    // later cannot replace the error with a success.
+    BOOL failed = error != nil;
+    NSString *notice = error ? (_failure ?: @"有文件没能从客机拷出，请重试") : nil;
+    if (!_remaining) {
+        failed = cageDragOutSummary(_names.count, _failed) != 0;
+        notice = failed ? (_failure ?: [NSString stringWithFormat:@"有 %lu 项没能从客机拷出", (unsigned long)_failed])
+                        : [NSString stringWithFormat:@"已从客机拷出 %lu 项", (unsigned long)_names.count];
+    }
+    if (notice) dispatch_async(dispatch_get_main_queue(), ^{ if (failed) clipboardError(notice); else clipboardNotice(notice); });
     completionHandler(error);
 }
 @end

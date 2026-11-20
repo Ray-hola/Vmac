@@ -48,7 +48,8 @@ for (name, size) in [("icon_16x16", 16), ("icon_16x16@2x", 32), ("icon_32x32", 3
 func length(_ value: Int) -> Data { var big = UInt32(value).bigEndian; return withUnsafeBytes(of: &big) { Data($0) } }
 var chunks = Data()
 for (kind, name) in [("icp4", "icon_16x16"), ("icp5", "icon_32x32"), ("icp6", "icon_32x32@2x"), ("ic07", "icon_128x128"),
-                     ("ic08", "icon_256x256"), ("ic09", "icon_512x512"), ("ic10", "icon_512x512@2x")] {
+                     ("ic08", "icon_256x256"), ("ic09", "icon_512x512"), ("ic10", "icon_512x512@2x"),
+                     ("ic11", "icon_16x16@2x"), ("ic12", "icon_32x32@2x"), ("ic13", "icon_128x128@2x"), ("ic14", "icon_256x256@2x")] {
     let data = try Data(contentsOf: iconset.appendingPathComponent(name + ".png"))
     chunks.append(kind.data(using: .ascii)!); chunks.append(length(data.count + 8)); chunks.append(data)
 }

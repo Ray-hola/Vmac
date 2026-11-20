@@ -26,15 +26,16 @@ struct VMacShellState: Equatable {
 
 enum VMacTone: String { case busy, ok, warn, bad, idle }
 
-/// What the toolbar's status pill shows.
+/// What the toolbar's status pill shows. With the window title hidden, the
+/// pill is also where an unfinished update is mentioned.
 struct VMacStatus: Equatable {
     let tone: VMacTone
     let title: String
     let detail: String
-    init(name: String, tone: String, detail: String) {
+    init(name: String, tone: String, detail: String, updatePending: Bool = false) {
         self.tone = VMacTone(rawValue: tone) ?? .idle
         self.title = name
-        self.detail = detail
+        self.detail = updatePending ? (detail.isEmpty ? "更新待完成" : detail + " · 更新待完成") : detail
     }
 }
 
@@ -114,16 +115,18 @@ func vmacFullScreenOptions() -> NSApplication.PresentationOptions {
 enum VMacMenuKey { case quit, hide, minimize, settings, controlCenter, fullScreen }
 
 /// On the guest desktop VMac keeps only two shortcuts, so that every other
-/// key combination reaches the guest like it would on a real Mac.
+/// key combination reaches the guest like it would on a real Mac. A window
+/// that is closed or minimized shows no guest, so the Mac shortcuts work again.
 enum VMacMenuKeys {
-    static func equivalent(for key: VMacMenuKey, mode: VMacShellMode) -> (key: String, modifiers: NSEvent.ModifierFlags) {
+    static func equivalent(for key: VMacMenuKey, mode: VMacShellMode, windowVisible: Bool) -> (key: String, modifiers: NSEvent.ModifierFlags) {
+        let guestHasKeys = mode == .desktop && windowVisible
         switch key {
         case .controlCenter: return (",", [.control, .command])
         case .fullScreen: return ("f", [.control, .command])
-        case .quit: return mode == .desktop ? ("", []) : ("q", [.command])
-        case .hide: return mode == .desktop ? ("", []) : ("h", [.command])
-        case .minimize: return mode == .desktop ? ("", []) : ("m", [.command])
-        case .settings: return mode == .desktop ? ("", []) : (",", [.command])
+        case .quit: return guestHasKeys ? ("", []) : ("q", [.command])
+        case .hide: return guestHasKeys ? ("", []) : ("h", [.command])
+        case .minimize: return guestHasKeys ? ("", []) : ("m", [.command])
+        case .settings: return guestHasKeys ? ("", []) : (",", [.command])
         }
     }
 }

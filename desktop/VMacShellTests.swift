@@ -62,16 +62,25 @@ enum VMacShellTests {
                      "in full screen the toolbar hides until the pointer reaches the top edge")
 
         for mode in [VMacShellMode.desktop, .controlCenter] {
-            let center = VMacMenuKeys.equivalent(for: .controlCenter, mode: mode)
-            precondition(center.key == "," && center.modifiers == [.control, .command])
-            let full = VMacMenuKeys.equivalent(for: .fullScreen, mode: mode)
-            precondition(full.key == "f" && full.modifiers == [.control, .command])
+            for visible in [true, false] {
+                let center = VMacMenuKeys.equivalent(for: .controlCenter, mode: mode, windowVisible: visible)
+                precondition(center.key == "," && center.modifiers == [.control, .command])
+                let full = VMacMenuKeys.equivalent(for: .fullScreen, mode: mode, windowVisible: visible)
+                precondition(full.key == "f" && full.modifiers == [.control, .command])
+            }
         }
         for (key, expected) in [(VMacMenuKey.quit, "q"), (.hide, "h"), (.minimize, "m"), (.settings, ",")] {
-            precondition(VMacMenuKeys.equivalent(for: key, mode: .desktop).key == "", "the guest keeps this shortcut on the desktop")
-            let inControls = VMacMenuKeys.equivalent(for: key, mode: .controlCenter)
+            precondition(VMacMenuKeys.equivalent(for: key, mode: .desktop, windowVisible: true).key == "", "the guest keeps this shortcut on the desktop")
+            let inControls = VMacMenuKeys.equivalent(for: key, mode: .controlCenter, windowVisible: true)
             precondition(inControls.key == expected && inControls.modifiers == [.command])
+            // A closed or minimized window shows no guest, so nothing is left to keep the shortcut for.
+            let hidden = VMacMenuKeys.equivalent(for: key, mode: .desktop, windowVisible: false)
+            precondition(hidden.key == expected && hidden.modifiers == [.command], "with no window the Mac shortcut works again")
         }
+
+        precondition(VMacStatus(name: "默认", tone: "ok", detail: "已保护").detail == "已保护")
+        precondition(VMacStatus(name: "默认", tone: "ok", detail: "已保护", updatePending: true).detail == "已保护 · 更新待完成")
+        precondition(VMacStatus(name: "默认", tone: "idle", detail: "", updatePending: true).detail == "更新待完成")
         print("VMac shell state, status, toast, full screen and menu key checks passed")
     }
 }

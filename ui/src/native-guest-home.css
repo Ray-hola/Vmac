@@ -81,7 +81,7 @@
 
 /* Segmented control */
 .vm-seg { position: relative; display: inline-flex; max-width: 100%; gap: 2px; padding: 3px; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--well); overflow-x: auto; scrollbar-width: none; }
-.vm-seg-thumb { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 8px; background: var(--card); box-shadow: 0 1px 2px rgba(15, 17, 21, .1), 0 0 0 1px rgba(15, 17, 21, .04); transition: transform .3s var(--vm-ease), width .3s var(--vm-ease); }
+.vm-seg-thumb { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 8px; background: var(--card); box-shadow: 0 1px 2px rgba(15, 17, 21, .1), 0 0 0 1px rgba(15, 17, 21, .04); transition: transform var(--vm-slow) var(--vm-ease), width var(--vm-slow) var(--vm-ease); }
 .native-guest-home .vm-seg button, .vm-seg button { position: relative; z-index: 1; gap: 6px; min-height: 30px; padding: 4px 14px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-weight: 550; box-shadow: none; }
 .native-guest-home .vm-seg button:hover:not(:disabled), .vm-seg button:hover:not(:disabled) { background: transparent; color: var(--ink); }
 .vm-seg button[aria-pressed="true"] { color: var(--ink); }
@@ -89,7 +89,7 @@
 .vm-seg button[aria-pressed="true"] .vm-seg-badge { background: var(--accent-soft); color: var(--accent-text); }
 
 /* Card */
-.vm-card { position: relative; padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--radius-group); background: var(--card); }
+.vm-card { position: relative; padding: 20px 22px; border-radius: var(--radius-group); background: var(--well); }
 .vm-card + .vm-card, .vm-tabpanel > .vm-card + .vm-card { margin-top: 16px; }
 .vm-tiles > .vm-card { margin-top: 0; }
 .vm-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
@@ -111,7 +111,7 @@
 .vm-monitor-screen::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .22) 50%, transparent 70%); transform: translateX(-100%); }
 .vm-monitor-stand { position: relative; width: 34px; height: 12px; margin: 0 auto; background: var(--line); clip-path: polygon(22% 0, 78% 0, 100% 100%, 0 100%); }
 .vm-monitor-stand::after { content: ""; position: absolute; left: -14px; right: -14px; bottom: -3px; height: 3px; border-radius: 2px; background: var(--line); }
-.vm-hero.stopped .vm-monitor-screen { border-color: var(--line); background: var(--well); color: var(--muted); }
+.vm-hero.stopped .vm-monitor-screen { border-color: var(--line); background: var(--card); color: var(--muted); }
 .vm-hero.failed .vm-monitor-screen { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); background: var(--danger-soft); color: var(--danger); }
 .vm-hero.ready .vm-monitor-screen { box-shadow: 0 0 0 5px var(--success-soft); }
 .vm-hero.busy .vm-monitor-screen::after, .vm-hero.connecting .vm-monitor-screen::after { animation: vm-sweep 1.8s var(--vm-ease) infinite; }
@@ -122,7 +122,7 @@
 .vm-steps { grid-column: 1 / -1; display: flex; gap: 0; margin: 4px 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); list-style: none; }
 .vm-steps li { display: flex; align-items: center; flex: 1; min-width: 0; color: var(--muted); font-size: 13px; transition: color var(--vm-mid); }
 .vm-steps li:last-child { flex: none; }
-.vm-steps li:not(:last-child)::after { content: ""; flex: 1; height: 2px; margin: 0 12px; border-radius: 1px; background: linear-gradient(90deg, var(--accent) 50%, var(--line) 50%); background-size: 200% 100%; background-position: 100% 0; transition: background-position .5s var(--vm-ease); }
+.vm-steps li:not(:last-child)::after { content: ""; flex: 1; height: 2px; margin: 0 12px; border-radius: 1px; background: linear-gradient(90deg, var(--accent) 50%, var(--line) 50%); background-size: 200% 100%; background-position: 100% 0; transition: background-position var(--vm-slow) var(--vm-ease); }
 .vm-steps li.done:not(:last-child)::after { background-position: 0 0; }
 .vm-step-dot { flex-shrink: 0; display: grid; place-items: center; width: 22px; height: 22px; margin-right: 8px; border: 1.5px solid var(--line); border-radius: 50%; background: var(--card); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; transition: background var(--vm-mid), border-color var(--vm-mid), color var(--vm-mid), transform var(--vm-mid) var(--vm-ease); }
 .vm-step-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -142,13 +142,13 @@
 .vm-boot .vm-steps { width: 100%; margin-top: 28px; padding-top: 0; border-top: 0; }
 .vm-boot-actions { justify-content: center; margin-top: 28px; }
 .vm-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; max-width: none; margin-top: 16px; }
-.native-guest-home .vm-tile { display: flex; align-items: flex-start; justify-content: flex-start; gap: 12px; min-height: 0; padding: 16px; text-align: left; white-space: normal; border-radius: 14px; background: var(--card); color: var(--ink); cursor: pointer; transition: transform var(--vm-mid) var(--vm-ease), border-color var(--vm-mid), box-shadow var(--vm-mid); }
-.native-guest-home .vm-tile:hover:not(:disabled) { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); background: var(--card); box-shadow: var(--vm-shadow); }
+.native-guest-home .vm-tile { display: flex; align-items: flex-start; justify-content: flex-start; gap: 12px; min-height: 0; padding: 16px; text-align: left; white-space: normal; border: 0; border-radius: var(--radius-group); background: var(--well); color: var(--ink); cursor: pointer; transition: transform var(--vm-mid) var(--vm-ease), box-shadow var(--vm-mid); }
+.native-guest-home .vm-tile:hover:not(:disabled) { transform: translateY(-2px); background: var(--well); box-shadow: var(--vm-shadow); }
 .native-guest-home .vm-tile:active:not(:disabled) { transform: translateY(0) scale(.99); }
-.vm-tile-icon { flex-shrink: 0; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--well); color: var(--muted); transition: background var(--vm-mid), color var(--vm-mid); }
+.vm-tile-icon { flex-shrink: 0; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-control); background: var(--card); color: var(--muted); transition: background var(--vm-mid), color var(--vm-mid); }
 .vm-tile.ok .vm-tile-icon { background: var(--success-soft); color: var(--success); }
-.vm-tile.busy .vm-tile-icon { background: var(--warn-soft); color: var(--warn); }
-.vm-tile.warn .vm-tile-icon { background: var(--accent-soft); color: var(--accent-text); }
+.vm-tile.busy .vm-tile-icon { background: var(--accent-soft); color: var(--accent-text); }
+.vm-tile.warn .vm-tile-icon { background: var(--warn-soft); color: var(--warn); }
 .vm-tile-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .vm-tile-text small { color: var(--muted); font-size: 12px; }
 .vm-tile-text strong { font-size: 15px; font-weight: 620; overflow-wrap: anywhere; }
@@ -191,13 +191,13 @@
 
 /* ── Checks ─────────────────────────────────────────────── */
 .vm-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; max-width: none; margin-bottom: 18px; }
-.vm-stat { display: grid; gap: 2px; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.vm-stat { display: grid; gap: 2px; min-width: 0; padding: 14px 16px; border-radius: var(--radius-group); background: var(--well); }
 .vm-stat small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .vm-stat strong { font-size: 17px; font-weight: 640; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; transition: color var(--vm-mid); }
 .vm-stat span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vm-stat.ok strong, .vm-stat.ok small svg { color: var(--success); }
-.vm-stat.busy strong, .vm-stat.busy small svg { color: var(--warn); }
-.vm-stat.warn strong, .vm-stat.warn small svg { color: var(--accent-text); }
+.vm-stat.busy strong, .vm-stat.busy small svg { color: var(--accent-text); }
+.vm-stat.warn strong, .vm-stat.warn small svg { color: var(--warn); }
 .vm-result-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: 14px; animation: vm-rise var(--vm-slow) var(--vm-ease); }
 .vm-result-row > span { padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
 .vm-result-row .ok { background: var(--success-soft); color: var(--success); }
@@ -215,11 +215,11 @@
 .vm-evidence li span { color: var(--muted); overflow-wrap: anywhere; }
 .vm-evidence li small { color: var(--muted); font-size: 12px; }
 .vm-progress { display: grid; gap: 6px; margin: 16px 0 0; color: var(--muted); font-size: 12px; animation: vm-fade var(--vm-mid); }
-.vm-progress-track { height: 6px; border-radius: 3px; background: var(--well); overflow: hidden; }
-.vm-progress-track i { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .35s var(--vm-ease); }
+.vm-progress-track { height: 6px; border-radius: 3px; background: var(--card); overflow: hidden; }
+.vm-progress-track i { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width var(--vm-slow) var(--vm-ease); }
 .vm-progress.running .vm-progress-track i { background-image: linear-gradient(45deg, rgba(255, 255, 255, .22) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .22) 50%, rgba(255, 255, 255, .22) 75%, transparent 75%); background-size: 24px 24px; animation: vm-stripes .8s linear infinite; }
 .vm-trace-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0 0; }
-.vm-trace { display: grid; gap: 2px; padding: 14px 16px; border-radius: 12px; background: var(--well); overflow-wrap: anywhere; transition: background var(--vm-mid); }
+.vm-trace { display: grid; gap: 2px; padding: 14px 16px; border-radius: var(--radius-control); background: var(--card); overflow-wrap: anywhere; transition: background var(--vm-mid); }
 .vm-trace small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .vm-trace strong { font-size: 16px; font-weight: 640; font-variant-numeric: tabular-nums; }
 .vm-trace span { color: var(--muted); font-size: 12px; }
@@ -235,7 +235,7 @@
 .vm-rows li > span { flex-shrink: 0; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .vm-score { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; width: 120px; }
 .vm-score b { font-weight: 560; color: var(--ink); }
-.vm-score i { display: block; height: 3px; max-width: 100%; border-radius: 2px; background: var(--accent); transition: width .5s var(--vm-ease); }
+.vm-score i { display: block; height: 3px; max-width: 100%; border-radius: 2px; background: var(--accent); transition: width var(--vm-slow) var(--vm-ease); }
 .vm-latency { flex: none; color: var(--muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .vm-latency.fast { color: var(--success); }
 .vm-latency.mid { color: var(--success); }
@@ -255,7 +255,7 @@
 .vm-site-group header small { color: var(--muted); font-size: 12px; }
 .vm-site-group header button { min-height: 28px; padding: 3px 8px; font-size: 12px; }
 .vm-site-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 155px), 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
-.vm-site-grid li { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--well); }
+.vm-site-grid li { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; padding: 9px 10px; border-radius: var(--radius-control); background: var(--card); }
 .vm-site-name { display: grid; gap: 5px; min-width: 0; }
 .vm-site-name strong { line-height: 1.15; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .vm-site-rounds { gap: 3px; }
@@ -270,8 +270,8 @@
 .vm-safety-actions .save-note { flex: 1; min-width: 180px; max-width: none; color: var(--muted); font-size: 12.5px; }
 
 /* ── Shared Cage components inside the VMac theme ───────── */
-.vmac-theme .modal-scrim { background: rgba(15, 17, 21, .22); backdrop-filter: blur(4px); animation: vm-fade .18s ease-out; }
-.vmac-theme .modal { border-radius: 16px; background: var(--card); box-shadow: 0 24px 80px rgba(15, 17, 21, .18), 0 2px 6px rgba(15, 17, 21, .06); animation: vm-pop .24s var(--vm-ease); }
+.vmac-theme .modal-scrim { background: rgba(15, 17, 21, .22); backdrop-filter: blur(4px); animation: vm-fade var(--vm-mid) ease-out; }
+.vmac-theme .modal { border-radius: 16px; background: var(--card); box-shadow: 0 24px 80px rgba(15, 17, 21, .18), 0 2px 6px rgba(15, 17, 21, .06); animation: vm-pop var(--vm-mid) var(--vm-ease); }
 .vmac-theme .modal-head { height: 56px; }
 .vmac-theme .modal-footer { justify-content: flex-end; background: var(--well); }
 .vmac-theme .modal-body { line-height: 1.7; }
@@ -281,11 +281,11 @@
 .vmac-theme .safety-summary { border-radius: 12px; background: var(--well); }
 .vmac-theme .safety-check { transition: background var(--vm-fast); }
 .vmac-theme .safety-check[open] > div { animation: vm-slide-down var(--vm-mid) var(--vm-ease); }
-.vmac-theme .settings-page { animation: vm-fade .2s ease-out; }
-.vmac-theme .settings-page .settings-main { animation: vm-slide-in .28s var(--vm-ease); }
+.vmac-theme .settings-page { animation: vm-fade var(--vm-mid) ease-out; }
+.vmac-theme .settings-page .settings-main { animation: vm-slide-in var(--vm-slow) var(--vm-ease); }
 .vmac-theme .settings-page .settings-sidebar nav button { transition: background var(--vm-fast), color var(--vm-fast); }
 .vmac-theme .settings-page .settings-sidebar nav button.selected { color: var(--accent-text); }
-.vmac-theme .settings-content > * { animation: vm-fade .22s var(--vm-ease); }
+.vmac-theme .settings-content > * { animation: vm-fade var(--vm-mid) var(--vm-ease); }
 .native-guest-home .proxy-manager { min-width: 0; width: 100%; max-width: none; }
 .native-guest-home :is(.proxy-node, .proxy-source, .proxy-help, .proxy-route) { border-radius: 12px; }
 .native-guest-home .proxy-hero { border-radius: 14px; }
@@ -306,14 +306,14 @@
 .vmac-theme .initialization button:active:not(:disabled) { transform: scale(.97); }
 .vmac-theme .initialization button.primary:hover:not(:disabled) { background: var(--button-hover); border-color: var(--button-hover); }
 .vmac-theme :is(.initialization-operation, .initialization-ready, .initialization-notice) { border: 1px solid var(--line); border-radius: 14px; background: var(--card); animation: vm-rise var(--vm-slow) var(--vm-ease); }
-.vmac-theme .initialization-ready svg { animation: vm-pop .4s var(--vm-ease); }
+.vmac-theme .initialization-ready svg { animation: vm-pop var(--vm-slow) var(--vm-ease); }
 .vmac-theme .mac-setup-checklist li[aria-current] { background: var(--accent-soft); }
 .vmac-theme .mac-setup-checklist li[data-complete="true"] .mac-setup-marker { border-color: var(--success); background: var(--success-soft); }
 
 /* Unlock and account creation */
 .vmac-theme .account-gate { background: var(--paper); }
-.vmac-theme .account-entry { animation: vm-rise .4s var(--vm-ease) both; }
-.vmac-theme .account-welcome-logo { animation: vm-pop .45s var(--vm-ease) both; }
+.vmac-theme .account-entry { animation: vm-rise var(--vm-slow) var(--vm-ease) both; }
+.vmac-theme .account-welcome-logo { animation: vm-pop var(--vm-slow) var(--vm-ease) both; }
 .vmac-theme .account-field input, .vmac-theme .account-field textarea { border-radius: 10px; transition: border-color var(--vm-fast), box-shadow var(--vm-mid); }
 .vmac-theme .account-field input:focus, .vmac-theme .account-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .vmac-theme .account-submit { border-radius: 10px; transition: background var(--vm-fast), transform var(--vm-fast) var(--vm-ease), box-shadow var(--vm-mid); }

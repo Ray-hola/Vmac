@@ -1,7 +1,9 @@
 import Cocoa
 
 /// A short message floating over the bottom of the window: transfer results
-/// and errors, shown without taking the user away from the guest.
+/// and errors, shown without taking the user away from the guest. It grows to
+/// two lines for a longer message; anything beyond that is cut, with the full
+/// text in the tooltip.
 final class VMacToastView: NSView {
     private var model = VMacToastModel()
     private var generation = 0
@@ -18,7 +20,12 @@ final class VMacToastView: NSView {
         isHidden = true
         label.font = .systemFont(ofSize: 12, weight: .medium)
         label.textColor = .white
-        label.lineBreakMode = .byTruncatingTail
+        label.usesSingleLineMode = false
+        label.cell?.wraps = true
+        label.cell?.isScrollable = false
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 2
+        label.cell?.truncatesLastVisibleLine = true
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         icon.image = NSImage(systemSymbolName: "exclamationmark.circle.fill", accessibilityDescription: nil)
         icon.contentTintColor = NSColor(srgbRed: 248 / 255, green: 113 / 255, blue: 113 / 255, alpha: 1)
@@ -30,9 +37,14 @@ final class VMacToastView: NSView {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
+        let oneLine = heightAnchor.constraint(equalToConstant: 32)
+        oneLine.priority = .defaultLow
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 32),
-            widthAnchor.constraint(lessThanOrEqualToConstant: 560),
+            oneLine,
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 32),
+            label.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 8),
+            label.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -8),
+            widthAnchor.constraint(lessThanOrEqualToConstant: Self.maxWidth),
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 15), icon.heightAnchor.constraint(equalToConstant: 15),
@@ -49,6 +61,18 @@ final class VMacToastView: NSView {
     required init?(coder: NSCoder) { fatalError() }
     private var errorLayout: [NSLayoutConstraint] = []
     private var infoLayout: [NSLayoutConstraint] = []
+    private static let maxWidth: CGFloat = 560
+    /// What the icon, the close button and the margins take from the width.
+    private static let errorInset: CGFloat = 68, infoInset: CGFloat = 32
+
+    // In a narrow window the label gets less room than the widest toast
+    // allows; it then has to wrap at the width it was really given.
+    override func layout() {
+        super.layout()
+        guard label.frame.width < label.intrinsicContentSize.width - 0.5 else { return }
+        label.preferredMaxLayoutWidth = label.frame.width
+        super.layout()
+    }
 
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
@@ -65,7 +89,9 @@ final class VMacToastView: NSView {
         generation += 1
         guard model.visible else { setShown(false); return }
         let isError = model.kind == .error
+        label.preferredMaxLayoutWidth = Self.maxWidth - (isError ? Self.errorInset : Self.infoInset)
         label.stringValue = model.text
+        toolTip = model.text
         icon.isHidden = !isError; close.isHidden = !isError
         NSLayoutConstraint.deactivate(isError ? infoLayout : errorLayout)
         NSLayoutConstraint.activate(isError ? errorLayout : infoLayout)

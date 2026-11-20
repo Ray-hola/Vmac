@@ -1,4 +1,4 @@
-// Checks the rule in ../clipboard_baseline.h. Run by scripts/test-clipboard-baseline.sh.
+// Checks the rule in ../clipboard_baseline.h. Run by scripts/test-maclogin-rules.sh.
 #include <assert.h>
 #include <stdio.h>
 #include "../clipboard_baseline.h"

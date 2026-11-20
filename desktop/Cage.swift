@@ -103,7 +103,8 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let path=Bundle.main.path(forResource:"VMac",ofType:"icns"),let icon=NSImage(contentsOfFile:path) { NSApp.applicationIconImage=icon }
-        let appearance = UserDefaults.standard.dictionary(forKey: nativeVMWorkbench ? "vmac.windowAppearance" : "cage.windowAppearance") ?? [:]
+        // VMac is always light and keeps no window appearance of its own.
+        let appearance = nativeVMWorkbench ? [:] : UserDefaults.standard.dictionary(forKey: "cage.windowAppearance") ?? [:]
         let mode = appearance["mode"] as? String ?? "system"
         NSApp.appearance = nativeVMWorkbench ? NSAppearance(named: .aqua) : mode == "system" ? nil : NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
         makeMenus()
@@ -381,6 +382,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private func applyShell(animated: Bool) {
         guard nativeVMWorkbench else { return }
         vmacToolbar?.setControlCenterActive(shell.mode == .controlCenter)
+        vmacToolbar?.setToggleEnabled(shell.toggleAction() != .none)
         refreshMenuKeys()
         guard let split = guestSplitView, let sidebar = guestSidebar else { return }
         let frames = shellFrames(in: split)
@@ -401,9 +403,11 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             self.guestContent.animator().frame = frames.content
         }, completionHandler: finish)
     }
-    private func refreshMenuKeys() {
+    /// `closing` is for the moment a window is about to close but still counts as visible.
+    private func refreshMenuKeys(closing: Bool = false) {
+        let visible = !closing && window?.isVisible == true && window?.isMiniaturized == false
         for (key, item) in shellMenuItems {
-            let equivalent = VMacMenuKeys.equivalent(for: key, mode: shell.mode)
+            let equivalent = VMacMenuKeys.equivalent(for: key, mode: shell.mode, windowVisible: visible)
             item.keyEquivalent = equivalent.key
             item.keyEquivalentModifierMask = equivalent.modifiers
         }
@@ -491,13 +495,15 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         toolbar.onToggleControlCenter = { [weak self] in self?.toggleControlCenter() }
         toolbar.onNavigate = { [weak self] destination in self?.selectGuestDestination(destination) }
         #if CAGE_EMBEDDED_VM
-        toolbar.onUpload = { _ = "upload".withCString { performEmbeddedUtility($0) } }
+        toolbar.onUpload = { [weak self] in
+            if !"upload".withCString({ performEmbeddedUtility($0) }) { self?.toast?.show("请先打开客机桌面", kind: .info) }
+        }
         #endif
         toolbar.onFullScreen = { [weak self] in self?.window.toggleFullScreen(nil) }
         // Restart and stop are confirmed by the workbench page, like its own buttons.
         toolbar.onRestart = { [weak self] in self?.selectGuestDestination("restart") }
         toolbar.onStop = { [weak self] in self?.selectGuestDestination("stop") }
-        toolbar.update(VMacStatus(name: activeProfileName(), tone: "idle", detail: "正在读取"))
+        toolbar.update(VMacStatus(name: activeProfileName(), tone: "idle", detail: "正在读取", updatePending: controllerNeedsUpdate))
         toolbar.install(in: window)
         vmacToolbar = toolbar
     }
@@ -505,7 +511,10 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     @objc private func toggleControlCenter() {
         switch shell.toggleAction() {
         case .showControlCenter: showGuestControls()
-        case .showDesktop: guestSidebar?.select("desktop"); guestDesktopCommand { _, _ in }
+        case .showDesktop:
+            guestDesktopCommand { [weak self] _, error in
+                if let error { self?.toast?.show(error, kind: .error) }
+            }
         case .none: break
         }
     }
@@ -869,7 +878,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
                 networkLabel: body["network"] as? String ?? "", failed: body["failed"] as? Bool ?? false,
                 setup: body["setup"] as? Bool ?? false, activity: body["activity"] as? String ?? "")
             vmacToolbar?.update(VMacStatus(name: activeProfileName(), tone: body["tone"] as? String ?? "idle",
-                                           detail: body["detail"] as? String ?? ""))
+                                           detail: body["detail"] as? String ?? "", updatePending: controllerNeedsUpdate))
             vmacToolbar?.update(detail: VMacStatusDetail(body: body))
             let running = body["running"] as? Bool ?? false, ready = body["ready"] as? Bool ?? false
             vmacToolbar?.setGuestActions(VMacGuestActions(running: running, ready: ready))
@@ -907,7 +916,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         case "appearance":
             guard let mode = body["mode"] as? String, ["system", "light", "dark"].contains(mode), let background = body["background"] as? String, background.range(of: "^#[0-9a-fA-F]{6}$", options: .regularExpression) != nil else { replyHandler(nil,"外观参数无效"); return }
             let value: [String:Any] = ["mode":mode,"background":background,"translucent":body["translucent"] as? Bool ?? false]
-            UserDefaults.standard.set(value, forKey: nativeVMWorkbench ? "vmac.windowAppearance" : "cage.windowAppearance")
+            if !nativeVMWorkbench { UserDefaults.standard.set(value, forKey: "cage.windowAppearance") }
             applyAppearance(value)
             replyHandler(true,nil)
         case "clipboardRead": replyHandler(NSPasteboard.general.string(forType:.string) ?? "",nil)
@@ -1153,9 +1162,10 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         webView.evaluateJavaScript("window.cageWindowVisible = \(visible ? "true" : "false"); window.dispatchEvent(new Event('cage-window-visibility'));", completionHandler: nil)
     }
     func windowDidChangeOcclusionState(_ notification: Notification) { publishWindowVisibility() }
-    func windowDidMiniaturize(_ notification: Notification) { publishWindowVisibility() }
-    func windowDidDeminiaturize(_ notification: Notification) { publishWindowVisibility() }
-    func windowWillClose(_ notification: Notification) { publishWindowVisibility(forceHidden: true) }
+    func windowDidMiniaturize(_ notification: Notification) { publishWindowVisibility(); refreshMenuKeys() }
+    func windowDidDeminiaturize(_ notification: Notification) { publishWindowVisibility(); refreshMenuKeys() }
+    func windowWillClose(_ notification: Notification) { publishWindowVisibility(forceHidden: true); refreshMenuKeys(closing: true) }
+    func windowDidBecomeKey(_ notification: Notification) { refreshMenuKeys() }
     func applicationDidHide(_ notification: Notification) { publishWindowVisibility(forceHidden: true) }
     func applicationDidUnhide(_ notification: Notification) { publishWindowVisibility() }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
