@@ -1,20 +1,5 @@
 import Cocoa
 
-enum CagePalette {
-    static let paper = NSColor(srgbRed: 250/255, green: 249/255, blue: 245/255, alpha: 1)
-    static let card = NSColor(srgbRed: 255/255, green: 254/255, blue: 251/255, alpha: 1)
-    static let sidebar = NSColor(srgbRed: 240/255, green: 238/255, blue: 230/255, alpha: 1)
-    static let ink = NSColor(srgbRed: 38/255, green: 38/255, blue: 36/255, alpha: 1)
-    static let muted = NSColor(srgbRed: 113/255, green: 109/255, blue: 100/255, alpha: 1)
-    static let accent = NSColor(srgbRed: 166/255, green: 77/255, blue: 47/255, alpha: 1)
-    static let line = NSColor(srgbRed: 213/255, green: 208/255, blue: 195/255, alpha: 1)
-    static let success = NSColor(srgbRed: 82/255, green: 112/255, blue: 82/255, alpha: 1)
-    static let warn = NSColor(srgbRed: 178/255, green: 116/255, blue: 29/255, alpha: 1)
-    static func mono(_ size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
-        .monospacedDigitSystemFont(ofSize: size, weight: weight)
-    }
-}
-
 private func bounded(_ value: CGFloat) -> CGFloat { min(1, max(0, value)) }
 
 /// Shared timing for sidebar motion; honours the system Reduce Motion setting.

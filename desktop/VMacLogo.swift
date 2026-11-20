@@ -20,8 +20,8 @@ func mark() -> NSBezierPath {
     p.line(to:NSPoint(x:158,y:350));p.curve(to:NSPoint(x:168,y:332),controlPoint1:NSPoint(x:151.33,y:338),controlPoint2:NSPoint(x:154.67,y:332));p.close()
     return p
 }
-let terracotta=NSColor(srgbRed:166/255,green:77/255,blue:47/255,alpha:1)
-func drawMark() { terracotta.setFill();mark().fill() }
+let brand=NSColor(srgbRed:57/255,green:100/255,blue:254/255,alpha:1)
+func drawMark() { brand.setFill();mark().fill() }
 final class MarkView:NSView {
     override var isFlipped:Bool {true}
     override func draw(_ dirtyRect:NSRect) {drawMark()}
@@ -33,7 +33,7 @@ func png(_ size:Int,appIcon:Bool)->Data {
     NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:rep)
     let t=NSAffineTransform();t.translateX(by:0,yBy:CGFloat(size));t.scaleX(by:CGFloat(size)/1024,yBy:-CGFloat(size)/1024);t.concat()
     if appIcon {
-        NSColor(srgbRed:250/255,green:249/255,blue:245/255,alpha:1).setFill()
+        NSColor.white.setFill()
         NSBezierPath(roundedRect:NSRect(x:60,y:60,width:904,height:904),xRadius:210,yRadius:210).fill()
         let inset=NSAffineTransform();inset.translateX(by:144,yBy:144);inset.scale(by:736/1024);inset.concat()
     }

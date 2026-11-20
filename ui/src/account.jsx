@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { api, native, nativeAvailable, writeClipboard } from "./api";
 import { getClientContext, isRemoteClient } from "./client-context.mjs";
-import logo from "./logo.png";
+import { logo } from "./brand-logo";
 import "./account.css";
 
 const AccountContext = createContext(null);
