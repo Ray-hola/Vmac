@@ -27,3 +27,13 @@ export function shouldAutoStart(status, { enabled, attempted, installed, setup }
   return Boolean(enabled && !attempted && installed && !setup && status && !status.vm_running &&
     !status.job?.running && !status.job?.error && !status.storage_recovery?.required);
 }
+
+// Whether the overview gives way to the boot view: only while a start or
+// restart runs, or while a guest that is up is still connecting. A failed job
+// or any other work keeps the normal overview with its buttons.
+export function bootView(status) {
+  if (!status) return false;
+  const job = status.job || {};
+  if (job.running) return job.kind === "start" || job.kind === "restart";
+  return Boolean(status.vm_running && !status.ready && !job.error);
+}

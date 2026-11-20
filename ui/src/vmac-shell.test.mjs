@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
+import { bootView, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
 
 const now = Date.parse("2026-11-20T12:00:00Z");
 const later = "2026-11-20T12:10:00Z";
@@ -59,3 +59,17 @@ for (const [name, value, options] of [
     assert.equal(shouldAutoStart(value, options), false);
   });
 }
+
+test("the boot view shows while the guest comes up", () => {
+  assert.equal(bootView({ job: { running: true, kind: "start" } }), true);
+  assert.equal(bootView({ vm_running: true, job: { running: true, kind: "restart" } }), true);
+  assert.equal(bootView({ vm_running: true, ready: false }), true);
+});
+test("the boot view stays away from everything else", () => {
+  assert.equal(bootView(null), false);
+  assert.equal(bootView({ vm_running: false }), false);
+  assert.equal(bootView({ vm_running: true, ready: true }), false);
+  assert.equal(bootView({ vm_running: true, job: { running: true, kind: "stop" } }), false);
+  assert.equal(bootView({ vm_running: false, job: { running: true, kind: "storage" } }), false);
+  assert.equal(bootView({ vm_running: true, ready: false, job: { running: false, error: "boom" } }), false);
+});

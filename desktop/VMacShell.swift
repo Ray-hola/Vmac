@@ -38,6 +38,18 @@ struct VMacStatus: Equatable {
     }
 }
 
+/// Which toolbar actions a guest in this state can take. Sending files needs
+/// a guest that is ready; restarting or stopping only needs it to be running,
+/// so a guest stuck while connecting can still be dealt with.
+struct VMacGuestActions: Equatable {
+    let upload: Bool
+    let lifecycle: Bool
+    init(running: Bool, ready: Bool) {
+        upload = running && ready
+        lifecycle = running
+    }
+}
+
 enum VMacToastKind { case info, error }
 
 /// The rules for the toast over the guest. An error stays until it is

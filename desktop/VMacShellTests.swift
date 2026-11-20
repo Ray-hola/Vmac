@@ -22,6 +22,13 @@ enum VMacShellTests {
         precondition(VMacStatus(name: "macOS 客机", tone: "???", detail: "").tone == .idle)
         precondition(VMacStatus(name: "a", tone: "busy", detail: "b") == VMacStatus(name: "a", tone: "busy", detail: "b"))
 
+        let connecting = VMacGuestActions(running: true, ready: false)
+        precondition(!connecting.upload && connecting.lifecycle, "a guest that is still connecting can be restarted or stopped")
+        let ready = VMacGuestActions(running: true, ready: true)
+        precondition(ready.upload && ready.lifecycle)
+        let stopped = VMacGuestActions(running: false, ready: false)
+        precondition(!stopped.upload && !stopped.lifecycle)
+
         var toast = VMacToastModel()
         precondition(!toast.visible)
         precondition(toast.show("已上传", kind: .info) == 3 && toast.visible && toast.text == "已上传")

@@ -3,6 +3,7 @@ import { ArrowRight, Check, HardDrive, LoaderCircle, Monitor, Network, Play, Pow
 import { isolationSummary } from "./safety-state.mjs";
 import { gib } from "./vmac-ui";
 import { logo } from "./brand-logo";
+import { bootView } from "./vmac-shell.mjs";
 
 const steps = [["vm", "启动虚拟机"], ["guest", "连接客机"], ["network", "网络检查"], ["desktop", "打开桌面"]];
 
@@ -54,12 +55,18 @@ export function GuestOverview({ status, network, request, disk, onStart, onResta
     </li>)}
   </ol>;
   // While the guest comes up there is nothing to manage: show only the progress.
-  if (phase === "connecting" || (phase === "busy" && job.kind !== "stop")) {
+  if (bootView(status)) {
     return <section className="vm-boot" aria-live="polite">
       <img className="vm-boot-logo" src={logo} alt="" />
       <h2>{copy[0]}</h2>
       <p role="status">{copy[1]}</p>
       {progress}
+      {/* A guest that never finishes connecting must still be reachable. */}
+      {phase === "connecting" && <div className="vm-actions vm-boot-actions">
+        <button onClick={onOpen} disabled={request}><Monitor size={15} />打开客机桌面</button>
+        <button onClick={onRestart}><RotateCw size={15} />重启</button>
+        <button className="vm-quiet" onClick={onStop}><Power size={15} />停止</button>
+      </div>}
     </section>;
   }
   return <div className="vm-overview">

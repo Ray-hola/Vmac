@@ -856,7 +856,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             vmacToolbar?.update(VMacStatus(name: activeProfileName(), tone: body["tone"] as? String ?? "idle",
                                            detail: body["detail"] as? String ?? ""))
             let running = body["running"] as? Bool ?? false, ready = body["ready"] as? Bool ?? false
-            vmacToolbar?.setGuestActionsEnabled(running && ready)
+            vmacToolbar?.setGuestActions(VMacGuestActions(running: running, ready: ready))
             // A desktop that is already showing stays up for as long as the guest runs.
             shell.guestStatusChanged(ready: running && (ready || guestDesktopVisible))
             if shell.mode == .controlCenter && guestDesktopVisible { showGuestControls() } else { applyShell(animated: true) }

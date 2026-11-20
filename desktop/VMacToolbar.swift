@@ -94,7 +94,7 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate {
     private let pill = VMacStatusPill()
     private var items: [NSToolbarItem.Identifier: NSToolbarItem] = [:]
     private var controlCenterActive = true
-    private var guestActionsEnabled = false
+    private var guestActions = VMacGuestActions(running: false, ready: false)
 
     private static let toggle = NSToolbarItem.Identifier("vmac.controlCenter")
     private static let status = NSToolbarItem.Identifier("vmac.status")
@@ -116,9 +116,10 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate {
         controlCenterActive = active
         refreshToggle()
     }
-    func setGuestActionsEnabled(_ enabled: Bool) {
-        guestActionsEnabled = enabled
-        for identifier in [Self.upload, Self.more] { items[identifier]?.isEnabled = enabled }
+    func setGuestActions(_ actions: VMacGuestActions) {
+        guestActions = actions
+        items[Self.upload]?.isEnabled = actions.upload
+        items[Self.more]?.isEnabled = actions.lifecycle
     }
 
     private func symbol(_ name: String, _ description: String, tint: NSColor? = nil) -> NSImage? {
@@ -157,7 +158,7 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate {
             item.image = symbol("square.and.arrow.up", "传文件到客机")
             item.label = "传文件"; item.toolTip = "传文件到客机"
             item.target = self; item.action = #selector(upload)
-            item.isEnabled = guestActionsEnabled
+            item.isEnabled = guestActions.upload
         case Self.fullScreen:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.image = symbol("arrow.up.left.and.arrow.down.right", "全屏")
@@ -172,7 +173,7 @@ final class VMacToolbarController: NSObject, NSToolbarDelegate {
             menuItem.showsIndicator = false
             menuItem.image = symbol("ellipsis.circle", "更多客机操作")
             menuItem.label = "更多"; menuItem.toolTip = "更多客机操作"
-            menuItem.isEnabled = guestActionsEnabled
+            menuItem.isEnabled = guestActions.lifecycle
             item = menuItem
         default:
             return nil
