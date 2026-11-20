@@ -83,7 +83,7 @@ xcrun swiftc -sdk "$SDKROOT" -module-cache-path "$CLANG_MODULE_CACHE_PATH" \
 
 xcrun swiftc -sdk "$SDKROOT" -target arm64-apple-macosx14.0 -module-cache-path "$CLANG_MODULE_CACHE_PATH" \
     desktop/VMacLogo.swift -o "$stage/render-logo"
-"$stage/render-logo" "$stage/logo"
+"$stage/render-logo" "$stage/logo" assets/branding/vmac-otter.png
 cp "$stage/logo/VMac.icns" "$stage/logo/VMacMark.pdf" "$resources/"
 
 bash scripts/guest-os/package-macos-guest.sh "$resources/guest-os"
