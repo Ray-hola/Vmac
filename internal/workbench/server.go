@@ -514,6 +514,7 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("POST /api/macos/native-upload", s.macOSNativeUpload)
 		mux.HandleFunc("POST /api/macos/native-reveal", s.macOSNativeReveal)
 		mux.HandleFunc("POST /api/macos/native-drop", s.macOSNativeDrop)
+		mux.HandleFunc("POST /api/macos/native-drag-out", s.macOSNativeDragOut)
 		mux.HandleFunc("POST /api/macos/native-clipboard", s.macOSNativeClipboard)
 		mux.HandleFunc("GET /api/macos/guest-admin", s.macOSGuestAdmin)
 		mux.HandleFunc("POST /api/macos/guest-admin", s.macOSGuestAdmin)

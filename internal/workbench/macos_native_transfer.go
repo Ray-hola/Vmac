@@ -161,7 +161,7 @@ func (s *Server) macOSNativeReveal(w http.ResponseWriter, r *http.Request) {
 	jsonReply(w, map[string]bool{"opened": true})
 }
 
-// A guest folder named by the guest's GUI agent: absolute, clean and printable.
+// A guest path named by the guest's GUI agent: absolute, clean and printable.
 func validGuestFolder(folder string) bool {
 	return len(folder) > 1 && len(folder) <= 1024 && path.IsAbs(folder) && path.Clean(folder) == folder &&
 		strings.IndexFunc(folder, unicode.IsControl) < 0
@@ -228,6 +228,39 @@ func (s *Server) macOSNativeDrop(w http.ResponseWriter, r *http.Request) {
 		label = "桌面"
 	}
 	jsonReply(w, map[string]string{"folder": folder, "label": label})
+}
+
+// macOSNativeDragOut hands the files of a drag that started in the guest and
+// left its picture to the Mac as a clipboard file selection with their names,
+// so the Mac can promise them before any bytes move. An empty selection means
+// no file drag was in progress.
+func (s *Server) macOSNativeDragOut(w http.ResponseWriter, r *http.Request) {
+	if !s.nativeMacOSTransferReady(w, r) {
+		return
+	}
+	// Freezing large files in the guest cache can take a while.
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	result, err := s.macOSClipboardRequest(ctx, map[string]any{"operation": "drag-files"})
+	if err != nil {
+		http.Error(w, "无法读取客机中正在拖动的文件", http.StatusBadGateway)
+		return
+	}
+	values, _ := result["files"].([]any)
+	paths := make([]string, 0, len(values))
+	names := make([]string, 0, len(values))
+	for _, value := range values {
+		if file, _ := value.(string); validGuestFolder(file) {
+			paths = append(paths, file)
+			names = append(names, path.Base(file))
+		}
+	}
+	reply := map[string]any{"files": "", "names": []string{}}
+	if len(paths) > 0 && len(paths) == len(values) && len(paths) <= 100 {
+		reply["files"], reply["names"] = s.registerClipboardFiles(paths, "guest"), names
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	jsonReply(w, reply)
 }
 
 type nativeClipboardValue struct {

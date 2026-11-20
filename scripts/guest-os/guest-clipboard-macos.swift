@@ -330,6 +330,9 @@ private final class ClipboardAgent: @unchecked Sendable {
     private var available: Bool
     private var revision: Int
     private var snapshotPending = false
+    // The drag pasteboard as it stood while the mouse button was last up. A
+    // change during the current press is a drag that started in this press.
+    private var dragBaseline = NSPasteboard(name: .drag).changeCount
     private var transfers: [UUID: Process] = [:]
     // Text typed with the Mac's input method is pasted through a transient
     // clipboard entry; the user's clipboard is restored afterwards.
@@ -545,7 +548,23 @@ private final class ClipboardAgent: @unchecked Sendable {
         } while Date() < deadline
         throw ClipboardFailure("clipboard_copy_not_observed")
     }
+    // Files of a drag that started in the guest and left the host's picture,
+    // frozen in the cache like a copy. No file drag in progress yields none.
+    func draggedFiles() throws -> [String: Any] {
+        let selected = try onGUI { () -> [String] in
+            try check()
+            let drag = NSPasteboard(name: .drag)
+            guard NSEvent.pressedMouseButtons & 1 != 0, drag.changeCount != dragBaseline,
+                  let urls = drag.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty else { return [] }
+            guard urls.allSatisfy({ $0.isFileURL && ($0.host == nil || $0.host == "" || $0.host == "localhost") }) else { throw ClipboardFailure("invalid_files") }
+            let values = try paths(urls.map(\.path))
+            record(values)
+            return values
+        }
+        return ["files": selected.isEmpty ? [] : try fileJSON("copy", values: selected)]
+    }
     func poll() {
+        if NSEvent.pressedMouseButtons & 1 == 0 { dragBaseline = NSPasteboard(name: .drag).changeCount }
         collectCopies()
         let current = gui()
         if current != available {
@@ -607,6 +626,8 @@ private final class ClipboardAgent: @unchecked Sendable {
             switch operation {
             case "drop-target":
                 try writeAll(fd, jsonData(dropTarget(request)))
+            case "drag-files":
+                try writeAll(fd, jsonData(draggedFiles()))
             case "reveal":
                 guard let path = request["path"] as? String, path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else { throw ClipboardFailure("invalid_files") }
                 onGUI {
@@ -791,7 +812,7 @@ private func client(_ operation: String) throws {
         }
         guard let line = try reader.line(), try json(line)["ok"] as? Bool == true else { throw ClipboardFailure("file_transfer_failed") }
     case "request":
-        guard let line = try Reader(STDIN_FILENO).line(), let action = try json(line)["operation"] as? String, ["read", "read-content", "write", "prepare-files", "discard", "copy-prepare", "copy-read", "drop-target", "reveal"].contains(action) else { throw ClipboardFailure("unknown_operation") }
+        guard let line = try Reader(STDIN_FILENO).line(), let action = try json(line)["operation"] as? String, ["read", "read-content", "write", "prepare-files", "discard", "copy-prepare", "copy-read", "drop-target", "drag-files", "reveal"].contains(action) else { throw ClipboardFailure("unknown_operation") }
         try writeAll(fd, line + Data([10])); shutdown(fd, SHUT_WR)
         guard let reply = try reader.line() else { throw ClipboardFailure("clipboard_service_unavailable") }
         try writeAll(STDOUT_FILENO, reply + Data([10]))
@@ -899,6 +920,8 @@ private func testAgentTransport(_ board: NSPasteboard) throws {
                   try Data(contentsOf: URL(fileURLWithPath: duplicates[0])) == Data([0, 255, 128, 10]) else { throw ClipboardFailure("test_copy_failed") }
             let denied = try rpc(["operation": "write", "files": ["/etc/passwd"]])
             guard denied["error"] as? String == "unregistered_files" else { throw ClipboardFailure("test_unregistered_file_accepted") }
+            // With no press in progress there is no guest drag to hand over.
+            guard (try rpc(["operation": "drag-files"])["files"] as? [Any])?.isEmpty == true else { throw ClipboardFailure("test_idle_drag_files") }
             let discarded = try rpc(["operation": "discard", "files": duplicates])
             let cleanupDeadline = Date().addingTimeInterval(5)
             while FileManager.default.fileExists(atPath: duplicates[0]), Date() < cleanupDeadline {

@@ -1,5 +1,6 @@
 //go:build darwin && arm64 && cgo && !no_vz
 #import <Cocoa/Cocoa.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <IOKit/hidsystem/IOLLEvent.h>
 #import <fcntl.h>
 #import <sys/stat.h>

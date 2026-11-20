@@ -423,3 +423,127 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
     [self closeConnection];
 }
 @end
+
+static void releaseGuestSelection(NSString *selection) {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        clipboardFilesCommand(@[@"--connection", @"local", @"release", selection], NULL);
+    });
+}
+
+// Finder names a promised file after the item; an existing one keeps its
+// contents and the new copy takes the next free "name 2" style name.
+static NSURL *unusedFileURL(NSURL *url) {
+    NSString *base = url.lastPathComponent.stringByDeletingPathExtension, *extension = url.pathExtension;
+    NSURL *folder = url.URLByDeletingLastPathComponent, *candidate = url;
+    for (NSUInteger n = 2; [NSFileManager.defaultManager fileExistsAtPath:candidate.path] && n < 1000; n++) {
+        NSString *name = [NSString stringWithFormat:@"%@ %lu", base, (unsigned long)n];
+        candidate = [folder URLByAppendingPathComponent:extension.length ? [name stringByAppendingPathExtension:extension] : name];
+    }
+    return candidate;
+}
+
+// A drag that started in the guest and left its picture continues as a Mac
+// drag of file promises. The files leave the guest only once a drop asks for
+// them, so the pointer never waits on the transfer.
+@interface CageGuestDragOut : NSObject <NSDraggingSource, NSFilePromiseProviderDelegate>
+// Nil unless the names are distinct plain file names.
+- (instancetype)initWithSelection:(NSString *)selection names:(NSArray *)names;
+- (NSArray<NSDraggingItem *> *)draggingItemsAt:(NSPoint)point;
+@end
+
+@implementation CageGuestDragOut {
+    NSString *_selection;
+    NSArray<NSString *> *_names;
+    NSOperationQueue *_queue;
+    NSDictionary<NSString *, NSString *> *_received;
+    NSString *_cache;
+    NSString *_failure;
+    NSUInteger _remaining;
+    BOOL _fetched;
+    BOOL _released;
+}
+- (instancetype)initWithSelection:(NSString *)selection names:(NSArray *)names {
+    if (!selection.length || names.count == 0 || names.count > 100 || [NSSet setWithArray:names].count != names.count) return nil;
+    for (NSString *name in names) {
+        if (![name isKindOfClass:NSString.class] || !name.length || [name containsString:@"/"] ||
+            [name isEqualToString:@"."] || [name isEqualToString:@".."]) return nil;
+    }
+    if ((self = [super init])) {
+        _selection = [selection copy];
+        _names = [names copy];
+        _remaining = names.count;
+        _queue = [[NSOperationQueue alloc] init];
+        _queue.maxConcurrentOperationCount = 1;
+        _queue.qualityOfService = NSQualityOfServiceUserInitiated;
+    }
+    return self;
+}
+- (NSArray<NSDraggingItem *> *)draggingItemsAt:(NSPoint)point {
+    NSMutableArray<NSDraggingItem *> *items = [NSMutableArray arrayWithCapacity:_names.count];
+    [_names enumerateObjectsUsingBlock:^(NSString *name, NSUInteger index, BOOL *stop) {
+        // The guest does not say which items are folders; most items without
+        // an extension are.
+        UTType *type = name.pathExtension.length ? [UTType typeWithFilenameExtension:name.pathExtension] ?: UTTypeData : UTTypeFolder;
+        NSFilePromiseProvider *provider = [[NSFilePromiseProvider alloc] initWithFileType:type.identifier delegate:self];
+        provider.userInfo = name;
+        NSDraggingItem *item = [[NSDraggingItem alloc] initWithPasteboardWriter:provider];
+        CGFloat offset = MIN(index, 4) * 6;
+        [item setDraggingFrame:NSMakeRect(point.x - 24 + offset, point.y - 24 - offset, 48, 48)
+                      contents:[NSWorkspace.sharedWorkspace iconForContentType:type]];
+        [items addObject:item];
+    }];
+    return items;
+}
+- (NSDragOperation)draggingSession:(NSDraggingSession *)session sourceOperationMaskForDraggingContext:(NSDraggingContext)context {
+    return context == NSDraggingContextOutsideApplication ? NSDragOperationCopy : NSDragOperationNone;
+}
+- (void)draggingSession:(NSDraggingSession *)session endedAtPoint:(NSPoint)point operation:(NSDragOperation)operation {
+    // Nothing will ask for the files; the guest can drop its frozen copy.
+    if (operation == NSDragOperationNone) [_queue addOperationWithBlock:^{ [self releaseSelection]; }];
+}
+// Runs on the serial queue.
+- (void)releaseSelection {
+    if (_released) return;
+    _released = YES;
+    clipboardFilesCommand(@[@"--connection", @"local", @"release", _selection], NULL);
+}
+// Runs on the serial queue: the first promise fetches every item at once.
+- (void)fetch {
+    if (_fetched) return;
+    _fetched = YES;
+    NSString *progress = [NSString stringWithFormat:@"正在从客机拷出 %lu 项…", (unsigned long)_names.count];
+    dispatch_async(dispatch_get_main_queue(), ^{ clipboardNotice(progress); });
+    NSString *failure = nil;
+    NSDictionary *result = clipboardFilesCommand(@[@"--connection", @"local", @"receive", _selection], &failure);
+    [self releaseSelection];
+    NSArray *paths = [result[@"paths"] isKindOfClass:NSArray.class] ? result[@"paths"] : @[];
+    _cache = [result[@"cache_id"] isKindOfClass:NSString.class] ? result[@"cache_id"] : nil;
+    NSMutableDictionary<NSString *, NSString *> *received = [NSMutableDictionary dictionary];
+    for (NSString *path in paths) if ([path isKindOfClass:NSString.class]) received[path.lastPathComponent] = path;
+    _received = received;
+    if (!received.count) _failure = failure ?: @"无法从客机拷出文件，请重试";
+}
+- (NSOperationQueue *)operationQueueForFilePromiseProvider:(NSFilePromiseProvider *)provider {
+    return _queue;
+}
+- (NSString *)filePromiseProvider:(NSFilePromiseProvider *)provider fileNameForType:(NSString *)fileType {
+    return provider.userInfo;
+}
+- (void)filePromiseProvider:(NSFilePromiseProvider *)provider writePromiseToURL:(NSURL *)url
+          completionHandler:(void (^)(NSError *))completionHandler {
+    [self fetch];
+    NSString *source = _received[provider.userInfo];
+    NSError *error = nil;
+    if (!source) {
+        error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadUnknownError
+                                userInfo:@{NSLocalizedDescriptionKey:_failure ?: @"客机没有提供这个文件"}];
+    } else {
+        [NSFileManager.defaultManager moveItemAtURL:[NSURL fileURLWithPath:source] toURL:unusedFileURL(url) error:&error];
+    }
+    if (--_remaining == 0 && _cache.length) clipboardCacheCommand(@"release", _cache);
+    NSString *notice = error ? (_failure ?: @"有文件没能从客机拷出，请重试") :
+        !_remaining ? [NSString stringWithFormat:@"已从客机拷出 %lu 项", (unsigned long)_names.count] : nil;
+    if (notice) dispatch_async(dispatch_get_main_queue(), ^{ clipboardNotice(notice); });
+    completionHandler(error);
+}
+@end

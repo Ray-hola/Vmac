@@ -611,6 +611,19 @@ func ClipboardFilesForConnection(configPath, connectionID, operation string, arg
 		return nil, err
 	}
 	client.client.Timeout = 30 * time.Minute
+	if operation == "drag" && len(args) == 0 {
+		// A guest drag left the picture: name its frozen files for a file
+		// promise. The drop receives and releases them like a guest copy.
+		var dragged struct {
+			Files string   `json:"files"`
+			Names []string `json:"names"`
+		}
+		status, err := client.call("POST", "/api/macos/native-drag-out", map[string]any{}, &dragged)
+		if err != nil || status != http.StatusOK || dragged.Files != "" && !browserFileID.MatchString(dragged.Files) {
+			return nil, errors.New("无法读取客机中正在拖动的文件")
+		}
+		return map[string]any{"files": dragged.Files, "names": dragged.Names}, nil
+	}
 	path := client.origin + "/api/clipboard/files"
 	var body io.Reader
 	method := "POST"

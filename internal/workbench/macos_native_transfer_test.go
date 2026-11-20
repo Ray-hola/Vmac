@@ -34,7 +34,7 @@ func TestMacOSNativeTransferRequiresTrustedLocalView(t *testing.T) {
 	s := testServer(t)
 	s.macosGuest = &guestos.MacOSProfile{Instance: "mac", User: "guestdev"}
 	handler := s.handler()
-	for _, path := range []string{"/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard", "/api/macos/input-sources"} {
+	for _, path := range []string{"/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard", "/api/macos/native-drag-out", "/api/macos/input-sources"} {
 		r := httptest.NewRequest("POST", s.origin+path, nil)
 		r.AddCookie(&http.Cookie{Name: s.cookieName(), Value: s.session})
 		w := httptest.NewRecorder()

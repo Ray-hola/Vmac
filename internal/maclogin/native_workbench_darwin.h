@@ -35,13 +35,83 @@ static BOOL plainASCII(NSString *text) {
     NSTextInputContext *_textInput;
     NSPoint _caret;
     BOOL _caretKnown;
+    NSEvent *_dragEvent;
+    NSUInteger _presses;
+    BOOL _leftPicture;
 }
 // The guest's caret is invisible to the Mac; the last click in the guest is
 // the best estimate of where text goes, so the composition follows it.
 - (void)mouseDown:(NSEvent *)event {
     _caret = [self convertPoint:event.locationInWindow fromView:nil];
     _caretKnown = YES;
+    _presses++;
+    _leftPicture = NO;
     [super mouseDown:event];
+}
+- (void)mouseDragged:(NSEvent *)event {
+    _dragEvent = event;
+    if (!_leftPicture && !NSPointInRect([self convertPoint:event.locationInWindow fromView:nil], self.bounds)) {
+        _leftPicture = YES;
+        [self askGuestForDrag];
+    }
+    [super mouseDragged:event];
+}
+- (void)mouseUp:(NSEvent *)event {
+    _presses++;
+    _dragEvent = nil;
+    [super mouseUp:event];
+}
+// A press that leaves the picture may be a guest file drag. The guest names
+// the files it is dragging, if any, once per press.
+- (void)askGuestForDrag {
+    if (!self.virtualMachine || self.owner.pane.hidden) return;
+    NSUInteger press = _presses;
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = clipboardFilesCommand(@[@"--connection", @"local", @"drag"], NULL);
+        NSString *selection = [result[@"files"] isKindOfClass:NSString.class] ? result[@"files"] : nil;
+        NSArray *names = [result[@"names"] isKindOfClass:NSArray.class] ? result[@"names"] : nil;
+        if (!selection.length) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            CageDropVMView *view = weakSelf;
+            CageGuestDragOut *transfer = [[CageGuestDragOut alloc] initWithSelection:selection names:names];
+            BOOL outside = view && !NSPointInRect([view convertPoint:view.window.mouseLocationOutsideOfEventStream fromView:nil], view.bounds);
+            // The button went up first and the guest finished its own drag,
+            // or the pointer came back to carry on dragging inside the guest.
+            if (!transfer || !view || view->_presses != press || !view->_dragEvent || !(NSEvent.pressedMouseButtons & 1) || !outside) {
+                if (view && view->_presses == press && !outside) view->_leftPicture = NO;
+                releaseGuestSelection(selection);
+                return;
+            }
+            [view handOffGuestDrag:transfer];
+        });
+    });
+}
+// The guest drag is cancelled with Escape and its button released where it
+// was pressed, so a guest that ignores Escape drops onto the source itself;
+// the Mac then carries the files on as a drag of its own.
+- (void)handOffGuestDrag:(CageGuestDragOut *)transfer {
+    NSEvent *drag = _dragEvent;
+    _presses++;
+    _dragEvent = nil;
+    NSInteger window = self.window.windowNumber;
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    NSEvent *(^key)(NSEventType) = ^(NSEventType type) {
+        return [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:0x100 timestamp:now windowNumber:window
+                                 context:nil characters:@"\x1b" charactersIgnoringModifiers:@"\x1b" isARepeat:NO keyCode:53];
+    };
+    NSPoint origin = [self convertPoint:_caret toView:nil];
+    NSEvent *(^mouse)(NSEventType) = ^(NSEventType type) {
+        return [NSEvent mouseEventWithType:type location:origin modifierFlags:0 timestamp:now windowNumber:window
+                                   context:nil eventNumber:0 clickCount:1 pressure:type == NSEventTypeLeftMouseUp ? 0 : 1];
+    };
+    [super keyDown:key(NSEventTypeKeyDown)];
+    [super keyUp:key(NSEventTypeKeyUp)];
+    [super mouseDragged:mouse(NSEventTypeLeftMouseDragged)];
+    [super mouseUp:mouse(NSEventTypeLeftMouseUp)];
+    NSPoint point = [self convertPoint:drag.locationInWindow fromView:nil];
+    NSDraggingSession *session = [self beginDraggingSessionWithItems:[transfer draggingItemsAt:point] event:drag source:transfer];
+    session.animatesToStartingPositionsOnCancelOrFail = NO;
 }
 - (NSRect)compositionFrame:(NSSize)size {
     NSPoint anchor = _caretKnown ? _caret : NSMakePoint(24, 24 + size.height + 8);
