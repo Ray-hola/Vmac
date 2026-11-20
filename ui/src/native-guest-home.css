@@ -332,3 +332,13 @@
 @media (prefers-reduced-motion: reduce) {
   .vmac-theme *, .vmac-theme *::before, .vmac-theme *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0ms !important; transition-duration: .01ms !important; }
 }
+
+/* ── Old settings sections shown inside a page ──────────── */
+.vmac-theme .settings-page.settings-embedded { position: static; inset: auto; z-index: auto; display: block; max-width: 1040px; margin-top: 20px; background: none; animation: none; }
+.vmac-theme .settings-embedded .settings-main { display: block; background: none; animation: none; }
+.vmac-theme .settings-page.settings-embedded .settings-content { padding: 0; overflow: visible; }
+.vmac-theme .settings-page.settings-embedded .settings-footer { position: sticky; bottom: -36px; z-index: 2; margin-top: 16px; padding: 12px 14px 12px 18px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--card) 97%, transparent); backdrop-filter: blur(10px); }
+.vmac-theme .settings-embedded .settings-footer .save-note { flex: 1; min-width: 180px; }
+.vmac-theme .settings-embedded .section-title { margin-bottom: 16px; }
+.vmac-theme .settings-embedded .section-title h3 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
+.vmac-theme .settings-embedded .section-title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }

@@ -37,3 +37,9 @@ export function bootView(status) {
   if (job.running) return job.kind === "start" || job.kind === "restart";
   return Boolean(status.vm_running && !status.ready && !job.error);
 }
+
+// "desktop" is what the sidebar's guest card sends: it shows the guest's
+// picture, but only once the guest is ready and no setup is in the way.
+export function opensDesktop(destination, { ready, setup }) {
+  return destination === "desktop" && Boolean(ready) && !setup;
+}

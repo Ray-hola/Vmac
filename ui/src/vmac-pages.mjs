@@ -15,7 +15,7 @@ export const pages = {
   sharing: { title: "共享与传输", symbol: "arrow.left.arrow.right", subtitle: "Mac 和客机之间怎样共享剪贴板和文件。" },
   proxy: { title: "代理线路", symbol: "network", subtitle: "选择出口节点、管理订阅，所有客机共用这套代理。" },
   checks: { title: "环境检测", symbol: "checkmark.shield", subtitle: "核对隔离报告、网关保护和 Claude 站点连通。" },
-  general: { title: "通用", symbol: "gearshape", subtitle: "启动方式、键盘习惯和显示。" },
+  general: { title: "通用", symbol: "gearshape", subtitle: "启动方式和显示。" },
   security: { title: "账户与安全", symbol: "lock.shield", subtitle: "VMac 账户、密码保险箱和远程连接。" },
   recovery: { title: "环境与恢复", symbol: "arrow.counterclockwise", subtitle: "环境存储、组件版本、客机权限和资源。" },
   about: { title: "关于", symbol: "info.circle", subtitle: "" },
@@ -38,11 +38,13 @@ export function pageFor(destination) {
   return aliases[destination] || "overview";
 }
 
-// The sections of the old settings panel that a page shows in place.
+// The sections of the old settings panel that a page shows in place. The old
+// "keyboard" section is left out: clock format, terminal command, remote key
+// mapping and workbench shortcuts only concern the shared workbench.
 const embedded = {
   system: ["region"],
   proxy: ["network"],
-  general: ["keyboard", "appearance"],
+  general: ["appearance"],
   security: ["account", "vault", "mobile"],
   recovery: ["project", "archived-sessions"],
   about: ["about"],
@@ -50,4 +52,20 @@ const embedded = {
 
 export function embeddedSections(page) {
   return embedded[page] || [];
+}
+
+// Sections of the settings overlay that save by themselves and show the
+// footer only once something has changed.
+const selfSaving = ["appearance", "browser", "account", "vault", "mobile", "archived-sessions", "project", "about"];
+
+// Whether the save bar shows. Inside a page it stays away until there is
+// something to save; the overlay keeps its own rules.
+export function settingsFooterVisible({ embedded, section, changed, proxyDirty, saving }) {
+  if (embedded) return Boolean(changed || proxyDirty || saving);
+  return !selfSaving.includes(section) || Boolean(changed);
+}
+
+// Whether leaving the page would drop edits the user has not saved.
+export function leavingNeedsConfirm({ changed, accountDirty, proxyDirty, resourceDirty }) {
+  return Boolean(changed || accountDirty || proxyDirty || resourceDirty);
 }

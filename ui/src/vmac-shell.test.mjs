@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bootView, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
+import { bootView, opensDesktop, shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
 
 const now = Date.parse("2026-11-20T12:00:00Z");
 const later = "2026-11-20T12:10:00Z";
@@ -72,4 +72,12 @@ test("the boot view stays away from everything else", () => {
   assert.equal(bootView({ vm_running: true, job: { running: true, kind: "stop" } }), false);
   assert.equal(bootView({ vm_running: false, job: { running: true, kind: "storage" } }), false);
   assert.equal(bootView({ vm_running: true, ready: false, job: { running: false, error: "boom" } }), false);
+});
+
+test("only the desktop destination of a ready guest opens the desktop", () => {
+  assert.equal(opensDesktop("desktop", { ready: true, setup: false }), true);
+  assert.equal(opensDesktop("desktop", { ready: false, setup: false }), false);
+  assert.equal(opensDesktop("desktop", { ready: true, setup: true }), false);
+  assert.equal(opensDesktop("overview", { ready: true, setup: false }), false);
+  assert.equal(opensDesktop("proxy", { ready: true, setup: false }), false);
 });

@@ -38,6 +38,7 @@ import { MacOSRecoveryButton } from "./macos-recovery";
 import { ScreenSharingChecks } from "./macos-screen-sharing";
 import { AccountSettings } from "./account";
 import { AboutSettings } from "./about-settings";
+import { leavingNeedsConfirm, settingsFooterVisible } from "./vmac-pages.mjs";
 const sections = [
   ["account", "账户", UserRound],
   ["vault", "密码保险箱", KeyRound],
@@ -57,6 +58,11 @@ export function SettingsPanel({
   onSaved,
   onConfirm,
   initialSection = "keyboard",
+  // Embedded, the panel is one section shown inside a VMac page: no sidebar
+  // of its own, and a save bar only while there is something to save.
+  embedded = false,
+  sections: embeddedSections = [],
+  onDirtyChange,
 }) {
   const [localKeyboard, setLocalKeyboard] = useState(() => clientKeyboard(current.keyboard));
   const [accountDirty, setAccountDirty] = useState(false);
@@ -95,6 +101,7 @@ export function SettingsPanel({
         JSON.stringify(canonicalExitPolicy(current[k]))
       : draft[k] !== current[k],
   );
+  const shows = (id) => (embedded ? embeddedSections.includes(id) : section === id);
   const busy =
     Boolean(status.job?.running) || Boolean(status.storage_recovery?.required) || probing || submitting || Boolean(jobId);
   // Project folders of the other guest systems are always read directly.
@@ -128,7 +135,7 @@ export function SettingsPanel({
         setError(status.job.error || status.job.message);
       } else {
         onSaved();
-        if (!proxyDirty) onClose();
+        if (!proxyDirty && !embedded) onClose();
       }
     }
   }, [status.job, jobId]);
@@ -197,6 +204,10 @@ export function SettingsPanel({
   const closeRef = useRef(close);
   closeRef.current = close;
   useEffect(() => {
+    onDirtyChange?.(leavingNeedsConfirm({ changed, accountDirty, proxyDirty, resourceDirty }));
+  }, [changed, accountDirty, proxyDirty, resourceDirty]);
+  useEffect(() => {
+    if (embedded) return undefined;
     const previous = document.activeElement;
     document.getElementById("settings-back")?.focus();
     const dismiss = (event) => {
@@ -215,8 +226,8 @@ export function SettingsPanel({
     };
   }, []);
   return (
-    <section className="settings-page" aria-label="设置">
-      <aside className="settings-sidebar">
+    <section className={embedded ? "settings-page settings-embedded" : "settings-page"} aria-label="设置">
+      {!embedded && <aside className="settings-sidebar">
         <button
           id="settings-back"
           className="back-to-workspace"
@@ -243,21 +254,21 @@ export function SettingsPanel({
             </button>
           ))}
         </nav>
-      </aside>
+      </aside>}
       <div className="settings-main">
-        <div className={section === "archived-sessions" ? "settings-content settings-content--archives" : section === "mobile" ? "settings-content settings-content--remote" : "settings-content"} ref={contentRef}>
-          {section === "appearance" && <AppearanceSettings />}
-          {section === "about" && <AboutSettings />}
-          {section === "archived-sessions" && <ArchivedSessions ready={status.ready && !busy} />}
-          {section === "vault" && <PasswordVaultSettings onConfirm={onConfirm} onDirty={setAccountDirty} />}
-          {section === "account" && <AccountSettings busy={busy} onDirty={setAccountDirty} />}
-          <fieldset className="settings-fields" disabled={busy && !(section === "project" && status.storage_recovery?.required)}>
-            {section === "mobile" && (isRemoteClient()
+        <div className={embedded ? "settings-content" : section === "archived-sessions" ? "settings-content settings-content--archives" : section === "mobile" ? "settings-content settings-content--remote" : "settings-content"} ref={contentRef}>
+          {shows("appearance") && <AppearanceSettings />}
+          {shows("about") && <AboutSettings />}
+          {shows("archived-sessions") && <ArchivedSessions ready={status.ready && !busy} />}
+          {shows("vault") && <PasswordVaultSettings onConfirm={onConfirm} onDirty={setAccountDirty} />}
+          {shows("account") && <AccountSettings busy={busy} onDirty={setAccountDirty} />}
+          <fieldset className="settings-fields" disabled={busy && !(shows("project") && status.storage_recovery?.required)}>
+            {shows("mobile") && (isRemoteClient()
               ? <section className="section-title"><h3>连接这台电脑</h3><p>请先切换到这台电脑的本机环境，再生成或管理手机配对码。</p></section>
               : <MobilePairSettings relay={draft.mobile_relay ?? ""} savedRelay={current.mobile_relay ?? ""} onChange={value => update("mobile_relay",value)} onConfirm={onConfirm} />)}
-            {section === "network" && (
+            {shows("network") && (
               <>
-                <ProxySettings
+                {!embedded && <ProxySettings
                   onDirty={setProxyDirty}
                   status={status}
                   onConfirm={onConfirm}
@@ -270,7 +281,7 @@ export function SettingsPanel({
                     }
                     await onSaved();
                   }}
-                />
+                />}
                 <label>
                   加密 DNS
                   <input
@@ -327,7 +338,8 @@ export function SettingsPanel({
                 </section>
               </>
             )}
-            {section === "region" && (
+            {shows("region") && <span id="vmac-region" />}
+            {shows("region") && (
               <>
                 <div className="section-title">
                   <h3>时区与语言</h3>
@@ -484,7 +496,7 @@ export function SettingsPanel({
                 </p>
               </>
             )}
-            {section === "keyboard" && (
+            {shows("keyboard") && (
               <>
                 <div className="section-title">
                   <h3>通用</h3>
@@ -594,7 +606,7 @@ export function SettingsPanel({
                 </div>
               </>
             )}
-            {section === "project" && (
+            {shows("project") && (
               <>
                 <div className="section-title">
                   <h3>环境与恢复</h3>
@@ -694,7 +706,7 @@ export function SettingsPanel({
             </div>
           )}
         </div>
-        {(!["appearance", "browser", "account", "vault", "mobile", "archived-sessions", "project", "about"].includes(section) || changed) && (
+        {settingsFooterVisible({ embedded, section, changed, proxyDirty, saving: submitting || Boolean(jobId) }) && (
           <footer className="settings-footer">
             {" "}
             <>
@@ -709,7 +721,7 @@ export function SettingsPanel({
                       : "有尚未保存的修改"
                     : "没有未保存的修改"}
               </span>
-              <button onClick={close}>返回工作台</button>
+              {!embedded && <button onClick={close}>返回工作台</button>}
               <button
                 className="primary"
                 disabled={!changed || busy}
