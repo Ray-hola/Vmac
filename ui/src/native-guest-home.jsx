@@ -6,7 +6,7 @@ import { requestMacOSRecovery } from "./macos-recovery";
 import { Modal } from "./modal";
 import { networkState } from "./safety-state.mjs";
 import { autoStartEnabled, opensDesktop, shellStatus, shouldAutoStart, statusDetail } from "./vmac-shell.mjs";
-import { embeddedSections, pageFor, pages } from "./vmac-pages.mjs";
+import { anchorFor, embeddedSections, leavePrompts, pageFor, pages, settingsDiffer, settingsNeedReload } from "./vmac-pages.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
 import { GeneralPage } from "./vmac-general";
@@ -31,6 +31,9 @@ export function NativeGuestHome({ setup = null }) {
   const [checksTab, setChecksTab] = useState("isolation");
   const [settings, setSettings] = useState(null);
   const [settingsVersion, setSettingsVersion] = useState(0);
+  const loadedSettings = useRef(null);
+  const pendingAnchor = useRef(null);
+  const [anchorRequest, setAnchorRequest] = useState(0);
   const [profile, setProfile] = useState("");
   const [disk, setDisk] = useState(null);
   const diskSize = useRef(null);
@@ -63,29 +66,51 @@ export function NativeGuestHome({ setup = null }) {
   }
   function choosePage(value) {
     if (value !== currentPage.current) settingsDirty.current = {};
+    if (settingsNeedReload({ entering: value, leaving: currentPage.current })) void refreshSettings();
     currentPage.current = value;
     setPage(value);
     // Keep the native sidebar selection in step with in-page navigation.
     void publishNavigation(latest.current).catch(() => {});
   }
-  // The old settings sections live inside the pages now; their names still work.
+  // The old settings sections live inside the pages now; their names still
+  // work, and one that sits further down its page is scrolled into view.
   function openSettings(value = "network") {
-    void navigate(pageFor(value));
+    void navigate(pageFor(value), undefined, anchorFor(value));
   }
+  // The embedded forms are rebuilt only when the settings really changed, so
+  // a routine re-read leaves a form that is being edited alone.
   async function refreshSettings() {
     try {
-      setSettings(await api("/settings"));
+      const next = await api("/settings");
+      if (!settingsDiffer(loadedSettings.current, next)) return;
+      loadedSettings.current = next;
+      setSettings(next);
       setSettingsVersion(version => version + 1);
     } catch (failure) { setError(failure.message); }
   }
   useEffect(() => { void refreshSettings(); }, []);
+  // Asks before unsaved work on the current page is dropped.
+  async function confirmLeaving(target) {
+    const prompts = leavePrompts({ from: currentPage.current, to: target,
+      settingsDirty: Object.values(settingsDirty.current).some(Boolean), proxyDirty: proxyDirty.current });
+    for (const prompt of prompts) {
+      const question = prompt === "settings"
+        ? { title: "放弃尚未保存的修改？", body: "当前环境不会改变。离开后会丢弃这次表单修改。", confirm: "放弃修改" }
+        : { title: "离开代理线路？", body: "代理更改尚未应用。", confirm: "离开页面" };
+      if (!await confirm(question)) return false;
+      if (prompt === "proxy") proxyDirty.current = false;
+    }
+    return true;
+  }
   async function openDesktop(destination = "desktop", shouldLaunchClaude = true) {
     if (opened.current) return;
     opened.current = true;
-    automatic.current = false;
-    setError("");
-    setRequest(true);
     try {
+      // Showing the desktop returns the control center to the overview.
+      if (!await confirmLeaving("overview")) return;
+      automatic.current = false;
+      setError("");
+      setRequest(true);
       await native("showGuestDesktop", { destination });
       choosePage("overview");
       if (destination === "desktop" && shouldLaunchClaude && launchClaude.current) {
@@ -95,25 +120,21 @@ export function NativeGuestHome({ setup = null }) {
     } catch (failure) { setError(failure.message); }
     finally { opened.current = false; setRequest(false); }
   }
-  async function navigate(destination, checksSection) {
+  async function navigate(destination, checksSection, anchor) {
     if (opened.current) return;
     const target = pageFor(destination);
-    if (target !== currentPage.current && Object.values(settingsDirty.current).some(Boolean)) {
-      if (!await confirm({ title: "放弃尚未保存的修改？", body: "当前环境不会改变。离开后会丢弃这次表单修改。", confirm: "放弃修改" })) {
-        await publishNavigation(latest.current);
-        return;
-      }
-    }
-    if (proxyDirty.current && target !== "proxy") {
-      if (!await confirm({ title: "离开代理管理？", body: "代理更改尚未应用。", confirm: "离开页面" })) {
-        await publishNavigation(latest.current);
-        return;
-      }
-      proxyDirty.current = false;
+    if (!await confirmLeaving(target)) {
+      // The native sidebar already shows the row that was clicked: put it back.
+      await publishNavigation(latest.current);
+      return;
     }
     automatic.current = false;
     setError("");
     if (target === "checks" && checksSection) setChecksTab(checksSection);
+    if (anchor) {
+      pendingAnchor.current = anchor;
+      setAnchorRequest(count => count + 1);
+    }
     choosePage(target);
     if (opensDesktop(destination, { ready: latest.current?.ready, setup: setupActive.current })) await openDesktop();
   }
@@ -137,6 +158,7 @@ export function NativeGuestHome({ setup = null }) {
     let wasRunning = false;
     let acknowledged = false;
     let lastNavigation = "";
+    let jobWasRunning = false;
     async function poll() {
       clearTimeout(timer);
       try {
@@ -158,6 +180,9 @@ export function NativeGuestHome({ setup = null }) {
           void native("showGuestControls").catch(() => {});
         }
         wasRunning = next.vm_running;
+        const jobRunning = Boolean(next.job?.running);
+        if (settingsNeedReload({ entering: currentPage.current, leaving: currentPage.current, jobWasRunning, jobRunning })) void refreshSettings();
+        jobWasRunning = jobRunning;
         const key = JSON.stringify([setupActive.current, next.vm_running, next.ready, next.job?.running, next.job?.error, statusDetail(next, diskSize.current), shellStatus(next, { setup: setupActive.current }).detail, currentPage.current]);
         if (key !== lastNavigation) {
           lastNavigation = key;
@@ -253,11 +278,13 @@ export function NativeGuestHome({ setup = null }) {
     if (!latest.current || request || latest.current.job?.running) return;
     setError("");
     if (action === "start") {
+      if (!await confirmLeaving("overview")) return;
       choosePage("overview");
       await start();
       return;
     }
     if (!latest.current.vm_running) return;
+    if (!await confirmLeaving("overview")) return;
     setRequest(true);
     try {
       const accepted = await requestMacOSRecovery("restart", confirm);
@@ -273,6 +300,8 @@ export function NativeGuestHome({ setup = null }) {
   stopAction.current = stop;
   async function stop() {
     if (!latest.current?.vm_running || request || latest.current.job?.running) return;
+    // A stopped guest brings the overview back, like a restart does.
+    if (!await confirmLeaving("overview")) return;
     if (!await confirm({ title: "停止 macOS 客机？", body: "请先保存客机中的工作。停止后客机文件和登录资料会保留，可随时再次启动。", confirm: "停止客机" })) return;
     setError("");
     setRequest(true);
@@ -306,7 +335,28 @@ export function NativeGuestHome({ setup = null }) {
   const showSetup = Boolean(setup && lifecycle);
   const pageKey = page;
   const scroller = useRef(null);
-  useEffect(() => { scroller.current?.scrollTo({ top: 0 }); }, [pageKey]);
+  // A page opens at its top, unless the jump named a form further down.
+  useEffect(() => {
+    const id = pendingAnchor.current;
+    pendingAnchor.current = null;
+    const view = scroller.current;
+    if (!id || !document.getElementById(id)) { view?.scrollTo({ top: 0 }); return undefined; }
+    // What sits above the form may still be loading and push it down: keep it
+    // in place until the page settles or the user takes over.
+    const follow = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
+    follow();
+    const observer = new ResizeObserver(follow);
+    const content = view.querySelector(".vm-page");
+    if (content) observer.observe(content);
+    const release = () => {
+      observer.disconnect();
+      clearTimeout(timer);
+      for (const kind of ["wheel", "touchstart", "keydown", "mousedown"]) view.removeEventListener(kind, release);
+    };
+    const timer = setTimeout(release, 3000);
+    for (const kind of ["wheel", "touchstart", "keydown", "mousedown"]) view.addEventListener(kind, release, { passive: true });
+    return release;
+  }, [pageKey, anchorRequest]);
   const chip = !status ? null
     : lifecycle ? <StatusChip tone={phaseChip[phase][0]}>{phaseChip[phase][1]}</StatusChip>
     : page === "checks" ? <StatusChip tone={protectionTone[protection.state] || "idle"}>{protectionText(protection)}</StatusChip>
@@ -318,7 +368,7 @@ export function NativeGuestHome({ setup = null }) {
     {!showSetup && <PageHeader title={pages[page].title} aside={chip}
       subtitle={lifecycle ? (profile ? `${profile} · 运行状态和常用操作` : "运行状态和常用操作") : pages[page].subtitle} />}
     {setup && <div className="native-setup-content" hidden={!showSetup}>{setup}</div>}
-    {!showSetup && issue && <div className="vm-banner" role="alert"><span>{issue}</span><button onClick={() => { setError(""); void pollNow.current?.(); }}>重新检查</button></div>}
+    {!showSetup && issue && <div className="vm-banner" role="alert"><span>{issue}</span><button onClick={() => { setError(""); void pollNow.current?.(); void refreshSettings(); }}>重新检查</button></div>}
     {!showSetup && <div className="vm-page" key={pageKey}>
       {!status ? <div className="vm-skeleton" role="status" aria-label="正在读取客机状态"><span /><span /><span /></div> :
       lifecycle ? <GuestOverview status={status} network={network} request={request} disk={disk}
@@ -345,7 +395,7 @@ export function NativeGuestHome({ setup = null }) {
           onApplied={() => { void pollNow.current?.(); void refreshSettings(); }} onChecks={() => navigate("checks", "gateway")} protection={protection} />
       : null}
       {status && settings && embeddedSections(page).map(id => <SettingsPanel key={`${id}:${settingsVersion}`} embedded sections={[id]}
-        current={settings} status={status} onClose={() => {}} onConfirm={confirm} onSaved={refreshSettings}
+        current={settings} status={status} onClose={() => {}} onConfirm={confirm} onSaved={refreshSettings} onOpenSection={openSettings}
         onDirtyChange={dirty => { settingsDirty.current[id] = dirty; }} />)}
     </div>}
     {dialog && <Modal title={dialog.title} onClose={() => resolve(false)}

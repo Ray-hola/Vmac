@@ -38,13 +38,11 @@ export function pageFor(destination) {
   return aliases[destination] || "overview";
 }
 
-// The sections of the old settings panel that a page shows in place. The old
-// "keyboard" section is left out: clock format, terminal command, remote key
-// mapping and workbench shortcuts only concern the shared workbench.
+// The sections of the old settings panel that a page shows in place.
 const embedded = {
   system: ["region"],
   proxy: ["network"],
-  general: ["appearance"],
+  general: ["keyboard", "appearance"],
   security: ["account", "vault", "mobile"],
   recovery: ["project", "archived-sessions"],
   about: ["about"],
@@ -52,6 +50,38 @@ const embedded = {
 
 export function embeddedSections(page) {
   return embedded[page] || [];
+}
+
+// Old section names whose form sits below other content on its page; a jump
+// to one of them scrolls to this element id.
+const anchors = { network: "vmac-network", region: "vmac-region" };
+
+export function anchorFor(destination) {
+  return anchors[destination] || null;
+}
+
+// Every embedded form posts the whole settings object, so the shell's copy
+// has to be current: it is read again before a page shows a form, and when a
+// job ends. A save that restarts the guest, a start that binds the exit or a
+// restore all change settings with no form on screen to notice.
+export function settingsNeedReload({ entering, leaving, jobWasRunning, jobRunning }) {
+  if (jobWasRunning && !jobRunning) return true;
+  return entering !== leaving && embeddedSections(entering).length > 0;
+}
+
+// Fresh settings replace the forms on screen only when something changed, so
+// a routine re-read does not discard what is being typed.
+export function settingsDiffer(previous, next) {
+  return JSON.stringify(previous) !== JSON.stringify(next);
+}
+
+// What leaving a page has to ask about first, in order: edits in a settings
+// form, then a proxy change that is not applied yet.
+export function leavePrompts({ from, to, settingsDirty, proxyDirty }) {
+  const prompts = [];
+  if (settingsDirty && to !== from) prompts.push("settings");
+  if (proxyDirty && to !== "proxy") prompts.push("proxy");
+  return prompts;
 }
 
 // Sections of the settings overlay that save by themselves and show the

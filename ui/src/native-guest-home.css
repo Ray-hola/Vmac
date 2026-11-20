@@ -34,7 +34,7 @@
 .vm-page > :nth-child(3), .vm-overview > :nth-child(3), .vm-checks > :nth-child(3), .vm-tabpanel > :nth-child(3) { animation-delay: 100ms; }
 .vm-page > :nth-child(n+4), .vm-checks > :nth-child(n+4) { animation-delay: 140ms; }
 .vm-tabpanel { animation: vm-fade var(--vm-mid) var(--vm-ease); }
-.vm-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: var(--vm-column); margin-inline: auto; margin: 0 0 16px; padding: 10px 12px 10px 16px; border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent); border-radius: 12px; background: var(--danger-soft); color: var(--danger); overflow-wrap: anywhere; animation: vm-slide-down var(--vm-mid) var(--vm-ease); }
+.vm-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: var(--vm-column); margin: 0 auto 16px; padding: 10px 12px 10px 16px; border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent); border-radius: 12px; background: var(--danger-soft); color: var(--danger); overflow-wrap: anywhere; animation: vm-slide-down var(--vm-mid) var(--vm-ease); }
 .vm-banner button { flex-shrink: 0; }
 .vm-skeleton { display: grid; gap: 14px; }
 .vm-skeleton span { display: block; height: 96px; border-radius: 14px; background: linear-gradient(90deg, var(--well) 0%, var(--chrome) 50%, var(--well) 100%); background-size: 200% 100%; animation: vm-shimmer 1.4s linear infinite; }
@@ -323,7 +323,7 @@
 
 @media (max-width: 900px) {
   .native-guest-home { padding: 0 24px 36px; }
-  .vm-header { margin: 0 -24px 18px; padding: 24px 24px 14px; }
+  .vm-header { margin: 0 -24px 18px; padding: 24px calc(24px + max(0px, (100% - var(--vm-column)) / 2)) 14px; }
   .vm-hero { grid-template-columns: minmax(0, 1fr); }
   .vm-monitor { display: none; }
   .vm-steps { flex-wrap: wrap; row-gap: 10px; }
@@ -344,6 +344,8 @@
 .vmac-theme .settings-embedded .section-title h3 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
 .vmac-theme .settings-embedded .section-title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .vmac-theme .settings-embedded a { color: var(--accent-text); text-underline-offset: 2px; }
+/* Jump targets stop below the sticky page header. */
+.vmac-theme .settings-embedded :is(#vmac-network, #vmac-region) { display: block; scroll-margin-top: 76px; }
 .native-guest-home[data-wide] { --vm-column: 1040px; }
 
 /* ── Grouped lists ──────────────────────────────────────── */

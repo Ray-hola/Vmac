@@ -63,6 +63,8 @@ export function SettingsPanel({
   embedded = false,
   sections: embeddedSections = [],
   onDirtyChange,
+  // Embedded, a jump to a section this panel does not show is the page's to make.
+  onOpenSection,
 }) {
   const [localKeyboard, setLocalKeyboard] = useState(() => clientKeyboard(current.keyboard));
   const [accountDirty, setAccountDirty] = useState(false);
@@ -266,8 +268,13 @@ export function SettingsPanel({
             {shows("mobile") && (isRemoteClient()
               ? <section className="section-title"><h3>连接这台电脑</h3><p>请先切换到这台电脑的本机环境，再生成或管理手机配对码。</p></section>
               : <MobilePairSettings relay={draft.mobile_relay ?? ""} savedRelay={current.mobile_relay ?? ""} onChange={value => update("mobile_relay",value)} onConfirm={onConfirm} />)}
+            {shows("network") && embedded && <span id="vmac-network" />}
             {shows("network") && (
               <>
+                {embedded && <div className="section-title">
+                  <h3>加密 DNS 和出口规则</h3>
+                  <p>保存后会重启客机，让新的设置生效。</p>
+                </div>}
                 {!embedded && <ProxySettings
                   onDirty={setProxyDirty}
                   status={status}
@@ -499,10 +506,12 @@ export function SettingsPanel({
             {shows("keyboard") && (
               <>
                 <div className="section-title">
-                  <h3>通用</h3>
-                  <p>管理工作台的按键习惯与日常操作。</p>
+                  <h3>{embedded ? "Claude 终端" : "通用"}</h3>
+                  <p>{embedded ? "手机远程新建 Claude 会话时运行的命令。" : "管理工作台的按键习惯与日常操作。"}</p>
                 </div>
-                <label>
+                {/* The clock, key habits and shortcuts below belong to the
+                    shared workbench; VMac's native guest window has none of them. */}
+                {!embedded && <label>
                   时间显示格式
                   <InlineSelect inline
                     aria-label="时间显示格式"
@@ -512,10 +521,10 @@ export function SettingsPanel({
                     <option value="24">24 小时制</option>
                     <option value="12">12 小时制（AM/PM）</option>
                   </InlineSelect>
-                </label>
-                <p className="field-help">
+                </label>}
+                {!embedded && <p className="field-help">
                   默认使用 24 小时制。保存后更新工作台底部时钟，无需重启环境；12 小时制使用 AM/PM 区分上午和下午。
-                </p>
+                </p>}
                 <label>
                   Claude 终端启动命令
                   <input
@@ -528,10 +537,11 @@ export function SettingsPanel({
                   />
                 </label>
                 <p className="field-help">
-                  选择“Claude 终端”后，在所选项目中运行此命令，例如 claude --continue。
-                  留空使用 claude；保存后仅影响新建的 Claude 终端，退出 Claude 后可继续使用 shell。
+                  {embedded
+                    ? "例如 claude --continue。留空使用 claude；保存后只影响之后新建的会话。"
+                    : "选择“Claude 终端”后，在所选项目中运行此命令，例如 claude --continue。留空使用 claude；保存后仅影响新建的 Claude 终端，退出 Claude 后可继续使用 shell。"}
                 </p>
-                {typeof current.balanced_display === "boolean" && <label className="toggle-row">
+                {!embedded && typeof current.balanced_display === "boolean" && <label className="toggle-row">
                   <span>
                     <strong>优先流畅</strong>
                     <small>降低浏览器和 Claude Desktop 的清晰度，Linux 环境同时减少 Claude Desktop 的动效。下次启动环境时生效。</small>
@@ -539,7 +549,7 @@ export function SettingsPanel({
                   <input type="checkbox" role="switch" checked={draft.balanced_display}
                     onChange={(event) => update("balanced_display", event.target.checked)} />
                 </label>}
-                {typeof current.project_file_cache === "boolean" && linuxGuest && <label className="toggle-row">
+                {!embedded && typeof current.project_file_cache === "boolean" && linuxGuest && <label className="toggle-row">
                   <span>
                     <strong>项目文件缓存</strong>
                     <small>减少读取项目文件时与本机的往返。在本机上所做的改动最多 20 秒后在环境中可见，也可以在项目栏点“刷新项目文件”立即同步。下次启动环境时生效。</small>
@@ -547,6 +557,7 @@ export function SettingsPanel({
                   <input type="checkbox" role="switch" checked={draft.project_file_cache}
                     onChange={(event) => update("project_file_cache", event.target.checked)} />
                 </label>}
+                {!embedded && <>
                 <h4>键盘习惯</h4>
                 <div className="choice-list">
                   {[
@@ -604,6 +615,7 @@ export function SettingsPanel({
                     </div>
                   ))}
                 </div>
+                </>}
               </>
             )}
             {shows("project") && (
@@ -690,13 +702,19 @@ export function SettingsPanel({
                   className="text-button"
                   disabled={busy}
                   onClick={() => {
+                    setProbeFailed(false);
+                    setError("");
+                    // The timezone form lives on another page: go there and
+                    // leave this form as it is.
+                    if (embedded && !shows("region")) {
+                      onOpenSection?.("region");
+                      return;
+                    }
                     setDraft((previous) => ({
                       ...previous,
                       auto_timezone: false,
                       auto_language: false,
                     }));
-                    setProbeFailed(false);
-                    setError("");
                     setSection("region");
                   }}
                 >
