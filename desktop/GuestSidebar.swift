@@ -2,6 +2,12 @@ import Cocoa
 
 private func bounded(_ value: CGFloat) -> CGFloat { min(1, max(0, value)) }
 
+private extension NSView {
+    /// Layer colors are fixed once set, so they are resolved under this view's
+    /// own appearance and set again whenever that appearance changes.
+    func resolvingColors(_ body: () -> Void) { effectiveAppearance.performAsCurrentDrawingAppearance(body) }
+}
+
 /// Shared timing for sidebar motion; honours the system Reduce Motion setting.
 private enum SidebarMotion {
     static let ease = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
@@ -113,12 +119,13 @@ private final class GuestNavigationButton: NSButton {
     }
     override func mouseEntered(with event: NSEvent) { hover = true; updateStyle() }
     override func mouseExited(with event: NSEvent) { hover = false; updateStyle() }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); updateStyle() }
     private func updateStyle() {
-        let color = selected ? CagePalette.accent : CagePalette.ink
+        let color = selected ? CagePalette.accentText : CagePalette.ink
         iconView.contentTintColor = color; labelView.textColor = color
         // The selection pill behind the rows carries the selected background.
         SidebarMotion.layers(0.12) {
-            layer?.backgroundColor = hover && !selected ? CagePalette.ink.withAlphaComponent(0.045).cgColor : NSColor.clear.cgColor
+            resolvingColors { layer?.backgroundColor = hover && !selected ? CagePalette.hover.cgColor : NSColor.clear.cgColor }
         }
         setAccessibilityValue(selected ? "已选择" : "")
     }
@@ -167,14 +174,12 @@ private final class SidebarPowerButton: NSButton {
         mode = next
         CATransaction.begin(); CATransaction.setDisableActions(true)
         let filled = next == .start && isEnabled
-        disc.backgroundColor = (filled ? CagePalette.accent : CagePalette.card).cgColor
+        resolvingColors {
+            disc.backgroundColor = (filled ? CagePalette.accent : CagePalette.card).cgColor
+            disc.borderColor = CagePalette.line.cgColor
+            spinner.strokeColor = CagePalette.accent.cgColor
+        }
         disc.borderWidth = filled ? 0 : 1
-        disc.borderColor = CagePalette.line.cgColor
-        disc.shadowColor = CagePalette.accent.cgColor
-        disc.shadowOpacity = filled ? 0.28 : 0
-        disc.shadowRadius = 4
-        disc.shadowOffset = CGSize(width: 0, height: 1)
-        spinner.strokeColor = CagePalette.accent.cgColor
         spinner.isHidden = next != .busy
         glyph.isHidden = next == .busy
         CATransaction.commit()
@@ -189,9 +194,10 @@ private final class SidebarPowerButton: NSButton {
         refreshGlyph()
     }
     override var isEnabled: Bool { didSet { apply(mode, animated: false); alphaValue = isEnabled || mode == .busy ? 1 : 0.55 } }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); apply(mode, animated: false) }
     private func refreshGlyph() {
         let symbol = mode == .start ? "play.fill" : "arrow.clockwise"
-        let tint = mode == .start && isEnabled ? CagePalette.card : CagePalette.ink
+        let tint = mode == .start && isEnabled ? NSColor.white : CagePalette.ink
         let size = glyph.bounds.width
         guard size > 0, let base = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size * 0.8, weight: .semibold)) else { return }
@@ -206,7 +212,7 @@ private final class SidebarPowerButton: NSButton {
         let scale = window?.backingScaleFactor ?? 2
         CATransaction.begin(); CATransaction.setDisableActions(true)
         glyph.contentsScale = scale
-        glyph.contents = image.layerContents(forContentsScale: scale)
+        resolvingColors { glyph.contents = image.layerContents(forContentsScale: scale) }
         glyph.contentsGravity = .resizeAspect
         CATransaction.commit()
     }
@@ -226,11 +232,12 @@ private final class SidebarMachineCard: NSView {
     private var hover = false
     private var tracking: NSTrackingArea?
     private var compact = false
+    private var dotColor = CagePalette.faint
     override var isFlipped: Bool { true }
     init(profile: String) {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 11
+        layer?.cornerRadius = 10
         layer?.borderWidth = 1
         name.stringValue = profile
         name.font = .systemFont(ofSize: 12.5, weight: .semibold); name.textColor = CagePalette.ink
@@ -260,14 +267,15 @@ private final class SidebarMachineCard: NSView {
         refreshChrome()
     }
     func update(running: Bool, ready: Bool, busy: Bool, setup: Bool, activity: String) {
+        // A ready guest turns the card into the way back to its desktop.
+        let returning = ready && !busy && !setup
         let text = setup ? "等待安装" : busy ? (["start": "正在启动…", "restart": "正在重启…", "stop": "正在停止…"][activity] ?? "正在处理…")
-            : ready ? "运行中 · 已就绪" : running ? "运行中 · 连接中" : "已停止"
+            : ready ? "回到桌面" : running ? "运行中 · 连接中" : "已停止"
         if state.stringValue != text { SidebarMotion.fade(state.layer, 0.16); state.stringValue = text }
-        let color = setup ? CagePalette.muted.withAlphaComponent(0.5) : busy || (running && !ready) ? CagePalette.warn : ready ? CagePalette.success : CagePalette.muted.withAlphaComponent(0.5)
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        dot.backgroundColor = color.cgColor
-        halo.backgroundColor = color.withAlphaComponent(0.2).cgColor
-        CATransaction.commit()
+        state.textColor = returning ? CagePalette.accentText : CagePalette.muted
+        state.font = .systemFont(ofSize: 11.5, weight: returning ? .medium : .regular)
+        dotColor = setup ? CagePalette.faint : busy || (running && !ready) ? CagePalette.accent : ready ? CagePalette.success : CagePalette.faint
+        refreshDot()
         let pulsing = (busy || (running && !ready)) && !setup
         if pulsing, halo.animation(forKey: "pulse") == nil, !SidebarMotion.reduced {
             let pulse = CABasicAnimation(keyPath: "opacity")
@@ -282,12 +290,23 @@ private final class SidebarMachineCard: NSView {
         setAccessibilityValue(text)
         toolTip = "\(name.stringValue)：\(text)"
     }
+    private func refreshDot() {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        resolvingColors {
+            dot.backgroundColor = dotColor.cgColor
+            halo.backgroundColor = dotColor.withAlphaComponent(0.2).cgColor
+        }
+        CATransaction.commit()
+    }
     private func refreshChrome() {
         SidebarMotion.layers(0.15) {
-            layer?.backgroundColor = compact ? NSColor.clear.cgColor : (hover ? CagePalette.card : CagePalette.card.withAlphaComponent(0.66)).cgColor
-            layer?.borderColor = compact ? NSColor.clear.cgColor : CagePalette.line.withAlphaComponent(hover ? 1 : 0.8).cgColor
+            resolvingColors {
+                layer?.backgroundColor = compact ? NSColor.clear.cgColor : (hover ? CagePalette.group : CagePalette.card).cgColor
+                layer?.borderColor = compact ? NSColor.clear.cgColor : CagePalette.line.cgColor
+            }
         }
     }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); refreshChrome(); refreshDot() }
     override func updateTrackingAreas() {
         if let tracking { removeTrackingArea(tracking) }
         tracking = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
@@ -322,7 +341,7 @@ private final class SidebarLamp: NSButton {
     required init?(coder: NSCoder) { fatalError() }
     func update(_ detail: String, _ state: Int) {
         active = state == 1 || state == 2 || state == 4
-        color = state == 1 ? CagePalette.success : state == 2 ? CagePalette.accent : state == 4 ? .systemRed : CagePalette.muted.withAlphaComponent(0.45)
+        color = state == 1 ? CagePalette.success : state == 2 ? CagePalette.accent : state == 4 ? CagePalette.danger : CagePalette.faint
         toolTip = "\(name)：\(detail)"; setAccessibilityValue(detail); needsDisplay = true
     }
     override func draw(_ dirtyRect: NSRect) {
@@ -344,7 +363,7 @@ private final class SidebarLamp: NSButton {
     override func mouseEntered(with event: NSEvent) { hover = true; hoverChanged() }
     override func mouseExited(with event: NSEvent) { hover = false; hoverChanged() }
     private func hoverChanged() {
-        SidebarMotion.layers(0.12) { layer?.backgroundColor = hover ? CagePalette.ink.withAlphaComponent(0.05).cgColor : NSColor.clear.cgColor }
+        SidebarMotion.layers(0.12) { resolvingColors { layer?.backgroundColor = hover ? CagePalette.hover.cgColor : NSColor.clear.cgColor } }
         needsDisplay = true
     }
 }
@@ -426,9 +445,20 @@ private final class SidebarTelemetry: NSView {
             lamp.identifier = NSUserInterfaceItemIdentifier(destination)
             addSubview(lamp)
         }
-        track.backgroundColor = CagePalette.line.cgColor; track.cornerRadius = 2
+        track.cornerRadius = 2
         fill.cornerRadius = 2; fill.anchorPoint = .zero
         layer?.addSublayer(track); track.addSublayer(fill)
+        refreshBarColors()
+    }
+    private func refreshBarColors() {
+        resolvingColors {
+            track.backgroundColor = CagePalette.line.cgColor
+            fill.backgroundColor = ((usedPercent ?? 0) > 85 ? CagePalette.warn : CagePalette.success).cgColor
+        }
+    }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        CATransaction.begin(); CATransaction.setDisableActions(true); refreshBarColors(); CATransaction.commit()
     }
     required init?(coder: NSCoder) { fatalError() }
     @objc private func lampPressed(_ sender: NSButton) { if let id = sender.identifier?.rawValue { onSelect?(id) } }
@@ -477,7 +507,7 @@ private final class SidebarTelemetry: NSView {
             self.track.frame = bar
             self.fill.bounds = CGRect(x: 0, y: 0, width: bar.width * remaining, height: bar.height)
             self.fill.position = .zero
-            self.fill.backgroundColor = ((self.usedPercent ?? 0) > 85 ? CagePalette.accent : CagePalette.success).cgColor
+            self.refreshBarColors()
         }
         track.isHidden = !wide
         if animated { SidebarMotion.layers(0.6, apply) }
@@ -542,7 +572,7 @@ final class CageGuestSidebar: NSView {
     private let destinations = [("desktop","客机桌面","macwindow"),("management","虚拟机管理","internaldrive"),("proxy","代理管理","network"),("checks","环境检测","checkmark.shield")]
     private let management = [("space","存储空间","externaldrive"),("profiles","虚拟机切换","square.on.square"),("login","客机账户","person.crop.circle"),("timezone","时区","clock"),("input","输入法","keyboard")]
     private var managementExpanded = true
-    private let brand=NSTextField(labelWithString:"VMac_")
+    private let brand=NSTextField(labelWithString:"VMac")
     private let logo=NSImageView()
     private let machine = SidebarMachineCard(profile: activeProfileName())
     private let pill = NSView()
@@ -555,7 +585,7 @@ final class CageGuestSidebar: NSView {
     override var isFlipped: Bool { true }
     init() {
         super.init(frame:.zero)
-        wantsLayer=true;layer?.backgroundColor=CagePalette.sidebar.cgColor
+        wantsLayer=true
         translatesAutoresizingMaskIntoConstraints=false
         brand.font = .systemFont(ofSize: 20, weight: .semibold);brand.textColor=CagePalette.ink;brand.lineBreakMode = .byTruncatingTail;brand.cell?.usesSingleLineMode=true;addSubview(brand)
         if let path=Bundle.main.path(forResource:"VMacMark",ofType:"pdf") { logo.image=NSImage(contentsOfFile:path) }
@@ -565,10 +595,8 @@ final class CageGuestSidebar: NSView {
         addSubview(machine)
         pill.wantsLayer = true
         pill.layer?.cornerRadius = 8
-        pill.layer?.backgroundColor = CagePalette.accent.withAlphaComponent(0.09).cgColor
-        pill.layer?.borderWidth = 1
-        pill.layer?.borderColor = CagePalette.accent.withAlphaComponent(0.2).cgColor
         addSubview(pill)
+        refreshColors()
         for (id,label,symbol) in Array(destinations.prefix(2)) + management + Array(destinations.dropFirst(2)) {
             let button=GuestNavigationButton(title:label,target:self,action:#selector(selectRow(_:)))
             button.identifier=NSUserInterfaceItemIdentifier(id)
@@ -591,6 +619,13 @@ final class CageGuestSidebar: NSView {
         select("desktop")
     }
     required init?(coder:NSCoder) { fatalError() }
+    private func refreshColors() {
+        resolvingColors {
+            layer?.backgroundColor = CagePalette.sidebar.cgColor
+            pill.layer?.backgroundColor = CagePalette.accentSoft.cgColor
+        }
+    }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); refreshColors() }
     private func isManagementPage(_ id: String) -> Bool {
         management.contains { $0.0 == id }
     }
@@ -600,8 +635,8 @@ final class CageGuestSidebar: NSView {
     private func layoutNavigation() {
         let compact = bounds.width < 146
         var y = machine.frame.maxY + 14
-        let parentHeight: CGFloat = compact ? 33 : 36
-        let childHeight: CGFloat = compact ? 27 : 29
+        let parentHeight: CGFloat = 32
+        let childHeight: CGFloat = compact ? 27 : 30
         let count = managementExpanded ? management.count : 0
         let preferred = CGFloat(destinations.count) * (parentHeight + 2) + CGFloat(count) * (childHeight + 2)
         let scale = bounded((telemetry.frame.minY - y - 8) / preferred)
