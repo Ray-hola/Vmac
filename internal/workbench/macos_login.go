@@ -347,6 +347,7 @@ func (s *Server) macOSLoginWindow(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.Setup && input.Action == "finish" && result.Error == "" && !s.macSetupPending() {
 		s.restoreProjectShares()
+		go s.grantMacOSGuestAdminAfterSetup()
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

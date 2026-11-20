@@ -84,7 +84,12 @@ final class MacChromeWindow {
         return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).filter { running in
             guard !running.isTerminated, running.bundleURL?.standardizedFileURL == app.standardizedFileURL else { return false }
             let args = arguments(running.processIdentifier)
-            guard args.contains("--user-data-dir=" + directory.path),
+            let stock = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Google/Chrome")
+            let ordinary = directory == profile && !args.isEmpty &&
+                !args.contains(where: { $0 == "--user-data-dir" || $0.hasPrefix("--user-data-dir=") }) &&
+                stock.resolvingSymlinksInPath().path == profile.resolvingSymlinksInPath().path &&
+                fm.fileExists(atPath: profile.appendingPathComponent(".system-keychain").path)
+            guard (args.contains("--user-data-dir=" + directory.path) || ordinary),
                   !args.contains(where: { $0 == "--headless" || $0.hasPrefix("--headless=") || $0 == "--remote-debugging-pipe" }) else { return false }
             var code: SecCode?
             let attrs = [kSecGuestAttributePid: running.processIdentifier] as CFDictionary

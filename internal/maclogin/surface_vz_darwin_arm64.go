@@ -4,7 +4,7 @@ package maclogin
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc
-#cgo LDFLAGS: -framework AppKit -framework Virtualization
+#cgo LDFLAGS: -framework AppKit -framework UniformTypeIdentifiers -framework Virtualization
 #include "bridge.h"
 */
 import "C"

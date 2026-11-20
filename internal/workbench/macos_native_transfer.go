@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"al.essio.dev/pkg/shellescape"
+	"github.com/Ray-hola/Vmac/internal/diagnostics"
 	"github.com/Ray-hola/Vmac/internal/version"
 )
 
@@ -42,9 +46,12 @@ func (s *Server) macOSNativeUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.URL.Query().Get("name")
-	const limit = 1 << 30
-	if !validNativeUploadName(name) || r.ContentLength > limit {
-		http.Error(w, "文件名无效或文件超过 1 GB", http.StatusBadRequest)
+	batch := r.URL.Query().Get("batch")
+	target := r.URL.Query().Get("target")
+	const limit = 8 << 30
+	if !validNativeUploadName(name) || (batch != "" && !nativeUploadBatch.MatchString(batch)) ||
+		(target != "" && (batch != "" || !validGuestFolder(target))) || r.ContentLength > limit {
+		http.Error(w, "文件名无效或文件超过 8 GB", http.StatusBadRequest)
 		return
 	}
 	body := http.MaxBytesReader(w, r.Body, limit)
@@ -57,29 +64,60 @@ func (s *Server) macOSNativeUpload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 	size, err := io.Copy(file, body)
 	if err != nil {
-		http.Error(w, "上传中断或文件超过 1 GB", http.StatusBadRequest)
+		http.Error(w, "上传中断或文件超过 8 GB", http.StatusBadRequest)
 		return
 	}
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
 		http.Error(w, "无法读取上传文件", http.StatusInternalServerError)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 110*time.Second)
+	// Allow large files at a conservative 16 MB/s on top of a fixed margin.
+	ctx, cancel := context.WithTimeout(r.Context(), 110*time.Second+time.Duration(size/(16<<20))*time.Second)
 	defer cancel()
 	// Every transfer gets a private directory. Remove incomplete uploads and
 	// publish the original name only after the transfer terminates cleanly.
+	// A drop onto a folder lands there under a free name, like a Finder copy.
+	// Otherwise one drop shares a batch folder shown in one window.
 	script := `set -eu
 umask 077
 root="$HOME/Downloads/VMac Uploads"
+if [ -n "$4" ]; then
+  [ -d "$4" ]
+  [ -w "$4" ]
+  dir="$4"
+  name="$1"
+  stem="${1%.*}"; ext="${1##*.}"
+  if [ "$stem" = "$1" ] || [ -z "$stem" ]; then stem="$1"; ext=""; fi
+  n=2
+  while [ -e "$dir/$name" ]; do
+    name="$stem $n${ext:+.$ext}"; n=$((n + 1))
+    [ "$n" -lt 1000 ]
+  done
+  tmp=$(/usr/bin/mktemp "$dir/.vmac-partial.XXXXXXXX")
+  trap '/bin/rm -f -- "$tmp"' EXIT
+  /bin/cat > "$tmp"
+  [ "$(/usr/bin/stat -f %z "$tmp")" = "$2" ]
+  /bin/chmod 644 "$tmp"
+  /bin/mv -n -- "$tmp" "$dir/$name"
+  [ ! -e "$tmp" ]
+  trap - EXIT
+  exit 0
+fi
 mkdir -p -- "$root"
-dir=$(/usr/bin/mktemp -d "$root/Upload.XXXXXXXX")
-trap '/bin/rm -rf -- "$dir"' EXIT
+if [ -n "$3" ]; then
+  dir="$root/$3"
+  mkdir -p -- "$dir"
+  if [ -e "$dir/$1" ]; then dir=$(/usr/bin/mktemp -d "$dir/Upload.XXXXXXXX"); fi
+else
+  dir=$(/usr/bin/mktemp -d "$root/Upload.XXXXXXXX")
+fi
 tmp=$(/usr/bin/mktemp "$dir/.partial.XXXXXXXX")
+trap '/bin/rm -f -- "$tmp"' EXIT
 /bin/cat > "$tmp"
 [ "$(/usr/bin/stat -f %z "$tmp")" = "$2" ]
 /bin/mv -- "$tmp" "$dir/$1"
 trap - EXIT`
-	command := "exec /bin/sh -c " + shellescape.Quote(script) + " upload " + shellescape.Quote(name) + " " + strconv.FormatInt(size, 10)
+	command := "exec /bin/sh -c " + shellescape.Quote(script) + " upload " + shellescape.Quote(name) + " " + strconv.FormatInt(size, 10) + " " + shellescape.Quote(batch) + " " + shellescape.Quote(target)
 	cmd := s.macOSSSHCommand(ctx, "-T", "cage-macos", "--", command)
 	cmd.Stdin = file
 	if err := cmd.Run(); err != nil {
@@ -87,6 +125,142 @@ trap - EXIT`
 		return
 	}
 	jsonReply(w, map[string]string{"folder": "Downloads/VMac Uploads"})
+}
+
+var nativeUploadBatch = regexp.MustCompile(`^[0-9]{8}-[0-9]{6}(-[0-9a-f]{4})?$`)
+
+// macOSNativeReveal opens a finished drop batch in the guest's Finder.
+func (s *Server) macOSNativeReveal(w http.ResponseWriter, r *http.Request) {
+	if !s.nativeMacOSTransferReady(w, r) {
+		return
+	}
+	var input struct {
+		Batch string `json:"batch"`
+	}
+	if !readJSON(w, r, &input) {
+		return
+	}
+	if !nativeUploadBatch.MatchString(input.Batch) {
+		http.Error(w, "上传批次无效", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	// The GUI agent brings Finder to the front; an SSH session cannot.
+	if _, err := s.macOSClipboardRequest(ctx, map[string]any{"operation": "reveal",
+		"path": path.Join("/Users", s.macosGuest.User, "Downloads/VMac Uploads", input.Batch)}); err == nil {
+		jsonReply(w, map[string]bool{"opened": true})
+		return
+	}
+	command := "exec /usr/bin/open -- " + shellescape.Quote("Downloads/VMac Uploads/"+input.Batch)
+	cmd := s.macOSSSHCommand(ctx, "-T", "cage-macos", "--", "cd \"$HOME\" && "+command)
+	if err := cmd.Run(); err != nil {
+		http.Error(w, "无法在客机中打开上传的文件夹", http.StatusBadGateway)
+		return
+	}
+	jsonReply(w, map[string]bool{"opened": true})
+}
+
+// A guest path named by the guest's GUI agent: absolute, clean and printable.
+func validGuestFolder(folder string) bool {
+	return len(folder) > 1 && len(folder) <= 1024 && path.IsAbs(folder) && path.Clean(folder) == folder &&
+		strings.IndexFunc(folder, unicode.IsControl) < 0
+}
+
+// macOSClipboardRequest sends one request to the guest's GUI clipboard agent.
+func (s *Server) macOSClipboardRequest(ctx context.Context, request map[string]any) (map[string]any, error) {
+	cmd, _, err := s.clipboardCommand(ctx, "request", clipboardFileSelection{})
+	if err != nil {
+		return nil, err
+	}
+	data, _ := json.Marshal(request)
+	cmd.Stdin = bytes.NewReader(append(data, '\n'))
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err = cmd.Start(); err != nil {
+		return nil, err
+	}
+	reply, readErr := io.ReadAll(io.LimitReader(out, 65536))
+	out.Close()
+	var result map[string]any
+	if err := cmd.Wait(); err != nil || readErr != nil || json.Unmarshal(reply, &result) != nil || result["error"] != nil {
+		return nil, errors.New("guest clipboard agent request failed")
+	}
+	return result, nil
+}
+
+// macOSNativeDrop resolves where files dropped at a point of the guest picture
+// belong: the Finder window there, or the Desktop.
+func (s *Server) macOSNativeDrop(w http.ResponseWriter, r *http.Request) {
+	if !s.nativeMacOSTransferReady(w, r) {
+		return
+	}
+	var input struct {
+		X *float64 `json:"x"`
+		Y *float64 `json:"y"`
+	}
+	if !readJSON(w, r, &input) {
+		return
+	}
+	if input.X == nil || input.Y == nil || *input.X < 0 || *input.X > 1 || *input.Y < 0 || *input.Y > 1 {
+		http.Error(w, "拖放位置无效", http.StatusBadRequest)
+		return
+	}
+	desktop := path.Join("/Users", s.macosGuest.User, "Desktop")
+	// The first drop may wait for the user to allow control of Finder.
+	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+	defer cancel()
+	folder, kind := desktop, "desktop"
+	result, err := s.macOSClipboardRequest(ctx, map[string]any{"operation": "drop-target", "x": *input.X, "y": *input.Y})
+	if err == nil {
+		if value, _ := result["path"].(string); validGuestFolder(value) {
+			folder, kind = value, "folder"
+			if value == desktop {
+				kind = "desktop"
+			}
+		}
+	}
+	_ = diagnostics.New(s.profile).Record("info", "native-drop", fmt.Sprintf("x=%.3f y=%.3f target=%s guest_error=%t", *input.X, *input.Y, kind, err != nil))
+	label := path.Base(folder)
+	if kind == "desktop" {
+		label = "桌面"
+	}
+	jsonReply(w, map[string]string{"folder": folder, "label": label})
+}
+
+// macOSNativeDragOut hands the files of a drag that started in the guest and
+// left its picture to the Mac as a clipboard file selection with their names,
+// so the Mac can promise them before any bytes move. An empty selection means
+// no file drag was in progress.
+func (s *Server) macOSNativeDragOut(w http.ResponseWriter, r *http.Request) {
+	if !s.nativeMacOSTransferReady(w, r) {
+		return
+	}
+	// Freezing large files in the guest cache can take a while.
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	result, err := s.macOSClipboardRequest(ctx, map[string]any{"operation": "drag-files"})
+	if err != nil {
+		http.Error(w, "无法读取客机中正在拖动的文件", http.StatusBadGateway)
+		return
+	}
+	values, _ := result["files"].([]any)
+	paths := make([]string, 0, len(values))
+	names := make([]string, 0, len(values))
+	for _, value := range values {
+		if file, _ := value.(string); validGuestFolder(file) {
+			paths = append(paths, file)
+			names = append(names, path.Base(file))
+		}
+	}
+	reply := map[string]any{"files": "", "names": []string{}}
+	if len(paths) > 0 && len(paths) == len(values) && len(paths) <= 100 {
+		reply["files"], reply["names"] = s.registerClipboardFiles(paths, "guest"), names
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	jsonReply(w, reply)
 }
 
 type nativeClipboardValue struct {
@@ -119,6 +293,9 @@ func (s *Server) macOSNativeClipboard(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "无法连接客机剪贴板", http.StatusBadGateway)
 		return
+	}
+	if input.Operation == "read" {
+		input.Operation = "read-content"
 	}
 	data, _ := json.Marshal(input)
 	cmd.Stdin = bytes.NewReader(append(data, '\n'))

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -18,10 +17,11 @@ import (
 	"time"
 
 	"al.essio.dev/pkg/shellescape"
-	"github.com/google/uuid"
 	"github.com/Ray-hola/Vmac/internal/cage"
 	"github.com/Ray-hola/Vmac/internal/clipboardfiles"
 	"github.com/Ray-hola/Vmac/internal/guestos"
+	"github.com/Ray-hola/Vmac/internal/version"
+	"github.com/google/uuid"
 )
 
 const clipboardWireLimit = 30 << 20
@@ -46,15 +46,21 @@ func compressedClipboardCommand(script string) (string, error) {
 }
 
 type clipboardPayload struct {
-	Hello   *clipboardHello `json:"hello,omitempty"`
-	Text    *string         `json:"text,omitempty"`
-	PNG     string          `json:"png,omitempty"`
-	Files   json.RawMessage `json:"files,omitempty"`
-	Error   string          `json:"error,omitempty"`
-	Source  string          `json:"source,omitempty"`
-	Serial  int             `json:"serial,omitempty"`
-	Ack     int             `json:"ack,omitempty"`
-	Release []string        `json:"release,omitempty"`
+	Hello     *clipboardHello `json:"hello,omitempty"`
+	Text      *string         `json:"text,omitempty"`
+	PNG       string          `json:"png,omitempty"`
+	Files     json.RawMessage `json:"files,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	Source    string          `json:"source,omitempty"`
+	Serial    int             `json:"serial,omitempty"`
+	Ack       int             `json:"ack,omitempty"`
+	Release   []string        `json:"release,omitempty"`
+	Subscribe bool            `json:"subscribe,omitempty"`
+	// Text committed by the Mac's input method, pasted through a transient
+	// guest clipboard entry and then restored.
+	TypeText    *string `json:"type_text,omitempty"`
+	RestoreText int     `json:"restore_text,omitempty"`
+	Typed       int     `json:"typed,omitempty"`
 }
 
 type clipboardHello struct {
@@ -64,6 +70,8 @@ type clipboardHello struct {
 	Formats     []string `json:"formats"`
 	Available   bool     `json:"available"`
 	FileRelease bool     `json:"file_release,omitempty"`
+	Subscribe   bool     `json:"subscribe,omitempty"`
+	TypeText    bool     `json:"type_text,omitempty"`
 }
 
 // The profile chooses the transport. A guest file selection can never choose
@@ -89,7 +97,7 @@ func (s *Server) clipboardCommand(ctx context.Context, operation string, selecti
 		return cmd, "guest", err
 	}
 	if s.macosGuest != nil {
-		if operation != "stream" && operation != "import" && operation != "export" && operation != "upload" && operation != "request" {
+		if operation != "stream" && operation != "stream-content" && operation != "import" && operation != "export" && operation != "upload" && operation != "request" {
 			return nil, "", errors.New("剪贴板操作无效")
 		}
 		if operation == "export" && selection.User != "guest" {
@@ -248,6 +256,12 @@ func (s *Server) clipboardFileSelection(id string) clipboardFileSelection {
 }
 
 func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
+	// The VMac window owns the only clipboard stream; it carries text, images
+	// and file selections, which move through /api/clipboard/files.
+	native := version.MacOSGuestOnly && s.macosGuest != nil
+	if native && !s.nativeMacOSTransferReady(w, r) {
+		return
+	}
 	s.mu.Lock()
 	available := s.ready && !s.closing && s.clipboardCancel == nil
 	ctx, cancel := context.WithCancel(r.Context())
@@ -262,7 +276,15 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { cancel(); s.mu.Lock(); s.clipboardCancel = nil; s.clipboardRelease = nil; s.mu.Unlock() }()
 	// 以当前后端配套的辅助脚本启动连接，保留 stdin/stdout 传输剪贴板数据。
-	cmd, source, err := s.clipboardCommand(ctx, "stream", clipboardFileSelection{})
+	// Guest agents before the subscribe capability only accept content-only
+	// streams; the first hello tells which kind is installed.
+	operation := "stream"
+	s.mu.Lock()
+	if native && s.clipboardContentOnlyGuest {
+		operation = "stream-content"
+	}
+	s.mu.Unlock()
+	cmd, source, err := s.clipboardCommand(ctx, operation, clipboardFileSelection{})
 	if err != nil {
 		http.Error(w, "剪贴板客机配置无效", 502)
 		return
@@ -322,6 +344,13 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 				if hello.Version != 1 || hello.OS != expectedOS || len(hello.Session) == 0 || len(hello.Session) > 256 {
 					return
 				}
+				if native && (operation == "stream") != hello.Subscribe {
+					// Reconnect with the stream kind this guest agent supports.
+					s.mu.Lock()
+					s.clipboardContentOnlyGuest = !hello.Subscribe
+					s.mu.Unlock()
+					return
+				}
 				s.mu.Lock()
 				changed := s.clipboardGuestSession != "" && s.clipboardGuestSession != hello.Session
 				s.mu.Unlock()
@@ -369,6 +398,29 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 		}
 		if payload.Release != nil {
 			return
+		}
+		if native {
+			value := nativeClipboardValue{Text: payload.Text, PNG: payload.PNG}
+			content := value.Text != nil || value.PNG != "" || payload.Files != nil
+			typing := payload.TypeText != nil || payload.RestoreText != 0
+			switch {
+			case typing:
+				if content || payload.Subscribe || operation != "stream" ||
+					(payload.TypeText != nil && (len(*payload.TypeText) == 0 || len(*payload.TypeText) > 8192)) ||
+					(payload.TypeText != nil && payload.RestoreText != 0) || payload.RestoreText < 0 {
+					return
+				}
+			case payload.Subscribe:
+				if content {
+					return
+				}
+			case payload.Files != nil:
+				if operation != "stream" {
+					return
+				}
+			case !value.valid():
+				return
+			}
 		}
 		if payload.Files != nil {
 			var id string
@@ -555,15 +607,23 @@ func ClipboardFilesForConnection(configPath, connectionID, operation string, arg
 		return nil, err
 	}
 	defer client.close()
-	entry, _ := url.Parse(client.launch.URL)
-	status, err := client.call("POST", "/api/session", map[string]string{"token": entry.Fragment}, nil)
-	if err != nil || status != http.StatusOK {
-		return nil, errors.New("无法连接剪贴板会话")
-	}
-	if _, err = client.bindConnection(connectionID); err != nil {
+	if err = client.openFileSession(connectionID); err != nil {
 		return nil, err
 	}
 	client.client.Timeout = 30 * time.Minute
+	if operation == "drag" && len(args) == 0 {
+		// A guest drag left the picture: name its frozen files for a file
+		// promise. The drop receives and releases them like a guest copy.
+		var dragged struct {
+			Files string   `json:"files"`
+			Names []string `json:"names"`
+		}
+		status, err := client.call("POST", "/api/macos/native-drag-out", map[string]any{}, &dragged)
+		if err != nil || status != http.StatusOK || dragged.Files != "" && !browserFileID.MatchString(dragged.Files) {
+			return nil, errors.New("无法读取客机中正在拖动的文件")
+		}
+		return map[string]any{"files": dragged.Files, "names": dragged.Names}, nil
+	}
 	path := client.origin + "/api/clipboard/files"
 	var body io.Reader
 	method := "POST"

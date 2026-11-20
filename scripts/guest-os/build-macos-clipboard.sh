@@ -16,6 +16,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleShortVersionString</key><string>1.0</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSUIElement</key><true/>
+<key>NSAppleEventsUsageDescription</key><string>把从 Mac 拖进来的文件放到你松手时所在的访达窗口。</string>
 </dict></plist>
 PLIST
 objects=$(mktemp -d)

@@ -352,8 +352,8 @@ func run() int {
 		args = append(append([]string{}, args[:2]...), args[4:]...)
 	}
 	if args[0] == "clipboard-files" {
-		if len(args) < 4 || args[1] != "--json" {
-			return fail(fmt.Errorf("clipboard-files --json --connection ID send|receive PATH..."))
+		if len(args) < 3 || args[1] != "--json" || len(args) < 4 && args[2] != "drag" {
+			return fail(fmt.Errorf("clipboard-files --json --connection ID send|receive PATH... | drag"))
 		}
 		result, err := workbench.ClipboardFilesForConnection(workbench.DesktopHelperConfig(path, connectionID), connectionID, args[2], args[3:])
 		if err != nil {

@@ -58,6 +58,7 @@ type Server struct {
 	macProjectsRetryAt                               time.Time
 	macLoginLease                                    *macLoginLease
 	macosGuest                                       *guestos.MacOSProfile
+	clipboardContentOnlyGuest                        bool
 	screenSharing                                    macOSScreenSharing
 	macResources                                     macOSResourceObserver
 	windowsGuest                                     *guestos.WindowsProfile
@@ -511,7 +512,14 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("POST /api/macos/space/scan", s.macOSSpace)
 		mux.HandleFunc("POST /api/macos/space/clean", s.macOSSpace)
 		mux.HandleFunc("POST /api/macos/native-upload", s.macOSNativeUpload)
+		mux.HandleFunc("POST /api/macos/native-reveal", s.macOSNativeReveal)
+		mux.HandleFunc("POST /api/macos/native-drop", s.macOSNativeDrop)
+		mux.HandleFunc("POST /api/macos/native-drag-out", s.macOSNativeDragOut)
 		mux.HandleFunc("POST /api/macos/native-clipboard", s.macOSNativeClipboard)
+		mux.HandleFunc("GET /api/macos/guest-admin", s.macOSGuestAdmin)
+		mux.HandleFunc("POST /api/macos/guest-admin", s.macOSGuestAdmin)
+		mux.HandleFunc("GET /api/macos/input-sources", s.macOSInputSources)
+		mux.HandleFunc("POST /api/macos/input-sources", s.macOSInputSources)
 		mux.HandleFunc("POST /api/macos/first-setup", s.macOSLoginWindow)
 		mux.HandleFunc("POST /api/macos/login", s.macOSLoginWindow)
 		mux.HandleFunc("POST /api/macos/maintenance", s.macOSLoginWindow)

@@ -1,6 +1,10 @@
 //go:build darwin && arm64 && cgo && !no_vz
 #import <Cocoa/Cocoa.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <IOKit/hidsystem/IOLLEvent.h>
+#import <fcntl.h>
+#import <sys/stat.h>
+#import <unistd.h>
 #import "bridge.h"
 #import "../../scripts/guest-os/macos-setup-view.m"
 
@@ -34,6 +38,7 @@ void cageLoginBeginEmbedded(void *ref) {
 
 void cageHideEmbeddedDesktop(void) {
 #ifdef CAGE_NATIVE_VM_TEST
+    [nativeWindow.clipboard setDesktopVisible:NO];
     nativeWindow.pane.hidden = YES;
     [embeddedWindow makeFirstResponder:nil];
 #endif
@@ -44,6 +49,7 @@ void cageLoginEndEmbedded(void) {
         [loginView close];
         loginView = nil;
 #ifdef CAGE_NATIVE_VM_TEST
+        [nativeWindow.clipboard setDesktopVisible:NO];
         nativeWindow.view.virtualMachine = nil;
         [nativeWindow.pane removeFromSuperview];
         nativeWindow = nil;
@@ -66,7 +72,8 @@ bool cageNativeVMShow(void) {
             NSView *pane = [[NSView alloc] initWithFrame:NSZeroRect];
             pane.translatesAutoresizingMaskIntoConstraints = NO;
             nativeWindow.pane = pane;
-            VZVirtualMachineView *view = [[VZVirtualMachineView alloc] initWithFrame:NSZeroRect];
+            CageDropVMView *view = [[CageDropVMView alloc] initWithFrame:NSZeroRect];
+            view.owner = nativeWindow;
             view.virtualMachine = machine;
             view.capturesSystemKeys = NO;
             view.automaticallyReconfiguresDisplay = NO;
@@ -101,6 +108,9 @@ bool cageEmbeddedUtility(const char *action) {
     if ([name isEqualToString:@"upload"]) [nativeWindow upload:nil];
     else if ([name isEqualToString:@"clipboard-to-guest"]) [nativeWindow clipboardToGuest:nil];
     else if ([name isEqualToString:@"clipboard-from-guest"]) [nativeWindow clipboardFromGuest:nil];
+    else if ([name isEqualToString:@"clipboard-visible"] || [name isEqualToString:@"clipboard-hidden"]) {
+        [nativeWindow.clipboard setDesktopVisible:!nativeWindow.pane.hidden && [name isEqualToString:@"clipboard-visible"]];
+    }
     else return false;
     return true;
 #else

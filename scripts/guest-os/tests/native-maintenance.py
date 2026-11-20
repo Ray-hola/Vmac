@@ -110,12 +110,18 @@ case "$3" in
     *) echo dev.cage.fixture ;;
 esac
 ''', 0o755)
+        # Remembers booted-out labels like launchd, so waits for an unload end.
         self.write('launchctl', '''#!/bin/sh
 if [ -n "${CAGE_TEST_LOGIN_WINDOW:-}" ]; then exit 1; fi
-if [ "$1" = bootstrap ] && [ -n "${CAGE_TEST_FAIL_ACTIVATION:-}" ] && [ ! -f "$CAGE_TEST_FAIL_ACTIVATION" ]; then
-    touch "$CAGE_TEST_FAIL_ACTIVATION"
-    exit 1
-fi
+state="$(dirname "$0")/launchctl-state"
+case "$1" in
+    bootout) mkdir -p "$state"; touch "$state/$(basename "$2")" ;;
+    print) [ ! -f "$state/$(basename "$2")" ] || exit 1 ;;
+    bootstrap)
+        if [ -n "${CAGE_TEST_FAIL_ACTIVATION:-}" ]; then touch "$CAGE_TEST_FAIL_ACTIVATION"; exit 1; fi
+        if [ -n "${CAGE_TEST_BUSY_ONCE:-}" ] && [ ! -f "$CAGE_TEST_BUSY_ONCE" ]; then touch "$CAGE_TEST_BUSY_ONCE"; exit 5; fi
+        rm -f "$state/$(basename "$3" .plist)" ;;
+esac
 exit 0
 ''', 0o755)
         self.write('environment.sh', '''
@@ -192,10 +198,12 @@ nc() { test "$1/$2/$3" = "-z/127.0.0.1/5900" && test -f "$QA_ROOT/loaded"; }
         env['VERIFIED_INTEL'] = 'yes'
         for user in ('root', 'cagesetup', 'cageprovision'):
             self.assertNotEqual(enable(user).returncode, 0, user)
-        env['GROUPS_FIXTURE'] = 'staff admin'
-        self.assertNotEqual(enable('blue').returncode, 0)
         self.assertFalse((self.root / 'group').exists())
-        env['GROUPS_FIXTURE'] = 'staff'
+        # The ordinary account may also hold guest administrator rights.
+        for groups in ('staff admin', 'staff'):
+            env['GROUPS_FIXTURE'] = groups
+            result = enable('blue')
+            self.assertEqual(result.returncode, 0, result.stderr)
         for model in ('Macmini8,1', 'VirtualMac2,1'):
             env['MODEL'] = model
             result = enable('blue')
@@ -417,6 +425,14 @@ hdiutil() {
         self.assertFalse((self.root / 'var/db/cage-components.json').exists())
         retry = self.run_install()
         self.assertEqual(retry.returncode, 0, retry.stderr)
+
+    def test_agent_still_unloading_is_bootstrapped_on_retry(self):
+        manifest = self.prepare_installer()
+        with patch.dict(os.environ, {'CAGE_TEST_BUSY_ONCE': str(self.root / 'busy-once')}):
+            result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / 'busy-once').exists())
+        self.assertEqual(json.loads((self.root / 'var/db/cage-components.json').read_text()), manifest)
 
     def test_logged_out_guest_publishes_without_gui_domain(self):
         manifest = self.prepare_installer()

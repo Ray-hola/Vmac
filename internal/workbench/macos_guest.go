@@ -34,7 +34,13 @@ func macOSWorkbenchRoute(path string) bool {
 		return id == "requests" || id == "open" || browserFileID.MatchString(id)
 	}
 	switch path {
-	case "/api/macos/disk", "/api/macos/space/scan", "/api/macos/space/clean", "/api/environment/macos-screen-sharing", "/api/macos/first-setup", "/api/appearance/codex", "/api/macos/project-approval", "/api/macos/exit-policy", "/api/macos/login", "/api/macos/maintenance", "/api/macos/restart", "/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard":
+	case "/api/macos/disk", "/api/macos/space/scan", "/api/macos/space/clean", "/api/environment/macos-screen-sharing", "/api/macos/first-setup", "/api/appearance/codex", "/api/macos/project-approval", "/api/macos/exit-policy", "/api/macos/login", "/api/macos/maintenance", "/api/macos/restart", "/api/macos/native-files", "/api/macos/native-upload", "/api/macos/native-clipboard", "/api/macos/native-reveal", "/api/macos/native-drop", "/api/macos/native-drag-out", "/api/macos/guest-admin":
+		return true
+	case "/api/macos/input-sources":
+		return true
+	case "/api/client/context":
+		// Guests never route to a remote host; the controller answers 404 so
+		// native file transfers bind to the local workload.
 		return true
 	}
 	return strings.HasPrefix(path, "/api/macos/claude/") || strings.HasPrefix(path, "/api/macos-browser/")
@@ -116,12 +122,7 @@ func (s *Server) checkMacOSGuest(ctx context.Context) error {
 		}
 	}
 	s.publishGate(state)
-	probe := `test "$(uname -s)" = Darwin && [[ $(sysctl -n hw.model) == VirtualMac* ]] && test "$(id -un)" = ` +
-		shellescape.Quote(s.macosGuest.User) + ` && [[ " $(id -Gn) " != *" admin "* ]]`
-	if s.macosGuest.Backend == guestos.MacOSQEMU {
-		probe = `/usr/local/libexec/cage-guest-check --expect ` + shellescape.Quote(s.macosGuest.UUID) + ` && test "$(id -un)" = ` + shellescape.Quote(s.macosGuest.User) + ` && [[ " $(id -Gn) " != *" admin "* ]]`
-	}
-	if _, err := s.guest(ctx, probe); err != nil {
+	if _, err := s.guest(ctx, s.macOSGuestIdentityProbe()); err != nil {
 		var exit *exec.ExitError
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) || (errors.As(err, &exit) && exit.ExitCode() == 255) {
 			return errMacOSGuestSSH
@@ -129,6 +130,16 @@ func (s *Server) checkMacOSGuest(ctx context.Context) error {
 		return errors.New("macOS 客机身份或普通账户校验未通过，请检查绑定的客机")
 	}
 	return nil
+}
+
+// macOSGuestIdentityProbe confirms the bound guest and its ordinary account.
+// After first setup that account may also be a guest administrator.
+func (s *Server) macOSGuestIdentityProbe() string {
+	user := shellescape.Quote(s.macosGuest.User)
+	if s.macosGuest.Backend == guestos.MacOSQEMU {
+		return `/usr/local/libexec/cage-guest-check --expect ` + shellescape.Quote(s.macosGuest.UUID) + ` && test "$(id -un)" = ` + user
+	}
+	return `test "$(uname -s)" = Darwin && [[ $(sysctl -n hw.model) == VirtualMac* ]] && test "$(id -un)" = ` + user
 }
 
 // macOSComponentReceiptProbe reads only the identity of the installed
@@ -220,6 +231,9 @@ func (s *Server) attachMacOSGuestForBoot(syncComponents bool) error {
 	defer cancel()
 	if err == nil {
 		err = s.syncNativeBrowserProfile(ctx)
+	}
+	if err == nil && syncComponents && !setupPending {
+		s.configureMacOSChromeProfile(s.operationContext())
 	}
 	s.mu.Lock()
 	if err != nil {

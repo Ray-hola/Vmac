@@ -2,13 +2,28 @@ package workbench
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"time"
 )
+
+//go:embed macos-chrome-profile.cjs
+var macOSChromeProfileScript string
+
+func (s *Server) configureMacOSChromeProfile(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	// The guest's ordinary user owns both folders. Chrome may already be
+	// running when macOS restores the desktop, so defer in that case.
+	cmd := s.macOSSSHCommand(ctx, "-T", "cage-macos", "--", `exec /usr/local/bin/node`)
+	cmd.Stdin = strings.NewReader(macOSChromeProfileScript)
+	_ = cmd.Run()
+}
 
 type macBrowserRequest struct {
 	Timezone  string `json:"timezone,omitempty"`

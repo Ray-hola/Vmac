@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const FileLimit int64 = 2 << 30
+const FileLimit int64 = 8 << 30
 const SelectionLimit = 100
 
 // LinkCachedFiles groups already frozen guest-cache files for one native file

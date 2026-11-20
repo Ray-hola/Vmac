@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Check, Clock3, Copy, Eye, EyeOff, HardDrive, KeyRound, LoaderCircle, Minus, Monitor, Plus, X } from "lucide-react";
+import { Check, Clock3, Copy, Eye, EyeOff, HardDrive, Keyboard, KeyRound, LoaderCircle, Minus, Monitor, Plus, ShieldCheck, X } from "lucide-react";
 import { api, native } from "./api";
 import { StatusChip, gib } from "./vmac-ui";
 
@@ -16,14 +16,98 @@ async function waitForJob(accepted) {
 
 const maxGiB = 2048;
 
-export function GuestLoginDetails({ installed, username, passwordPending }) {
+const inputSourceNames = {
+  "com.apple.inputmethod.SCIM.ITABC": "简体拼音",
+  "com.apple.inputmethod.TCIM.Zhuyin": "注音",
+  "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese": "日语（罗马字）",
+  "com.apple.inputmethod.Korean.2SetKorean": "韩语（两套式）",
+};
+
+export function GuestInputSources({ ready, onOpen }) {
+  const [sources, setSources] = useState(null);
+  const [error, setError] = useState("");
+  const [request, setRequest] = useState(false);
+  const [revision, refresh] = useState(0);
+
+  useEffect(() => {
+    if (!ready) return;
+    const controller = new AbortController();
+    api("/macos/input-sources", undefined, undefined, {}, { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) setSources(value); })
+      .catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
+    return () => controller.abort();
+  }, [ready, revision]);
+
+  async function openSettings() {
+    setRequest(true);
+    setError("");
+    try {
+      await api("/macos/input-sources", {});
+      await onOpen();
+    } catch (failure) { setError(failure.message); }
+    finally { setRequest(false); }
+  }
+
+  return <section className="vm-card" aria-label="客机输入法">
+    <div className="vm-card-head"><div className="vm-card-title">
+      <span className="vm-card-icon"><Keyboard size={17} aria-hidden="true" /></span>
+      <div><h2>客机输入法</h2><p>{ready ? "在客机键盘设置中添加或移除输入法。在客机桌面按 Control + 空格切换。" : "启动并登录 macOS 客机后即可管理输入法。"}</p></div>
+    </div></div>
+    <p className="vm-note">在客机桌面里打字时，默认直接使用 Mac 上当前的输入法（例如豆包、搜狗），词库和设置都是 Mac 上那一份。客机这边请保持英文（ABC）输入，避免两边同时转换；不需要时可在菜单栏「文件 → 用 Mac 输入法在客机中打字」关闭。</p>
+    {ready && <>
+      {sources && <dl className="vm-guest-details">
+        <div><dt>当前输入法</dt><dd>{sources.selected.map(id => inputSourceNames[id] || id).join("、") || "暂未读取到"}</dd></div>
+        <div><dt>已启用</dt><dd>{sources.enabled.map(id => inputSourceNames[id] || id).join("、") || "暂未读取到"}</dd></div>
+      </dl>}
+      <div className="vm-actions">
+        <button className="primary" type="button" disabled={request} onClick={openSettings}>打开客机键盘设置</button>
+        <button type="button" onClick={() => { setError(""); refresh(value => value + 1); }}>刷新</button>
+      </div>
+    </>}
+    {error && ready && <p className="vm-error" role="alert">{error}</p>}
+  </section>;
+}
+
+export function GuestLoginDetails({ installed, ready, username, passwordPending, onConfirm }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [admin, setAdmin] = useState(null);
+  const [adminPending, setAdminPending] = useState(false);
   const request = useRef(null);
 
   useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => {
+    if (!installed || !ready) { setAdmin(null); return; }
+    const controller = new AbortController();
+    api("/macos/guest-admin", undefined, undefined, {}, { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) setAdmin(value.admin); })
+      .catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
+    return () => controller.abort();
+  }, [installed, ready]);
+  async function changeAdmin(enabled) {
+    const name = username || "客机账户";
+    const confirmed = await onConfirm(enabled ? {
+      title: "开启客机管理员权限？",
+      body: `开启后，安装应用或修改系统设置时，用 ${name} 和 VMac 账户密码认证即可。客机里的程序也能修改系统设置（例如 DNS），客机内的部分检测可能被绕过；外网出口仍由 Mac 端网关控制。`,
+      confirm: "开启管理员权限",
+    } : {
+      title: "关闭客机管理员权限？",
+      body: `关闭后 ${name} 变回普通用户，需要管理员认证的安装和设置会无法完成。`,
+      confirm: "关闭管理员权限",
+    });
+    if (!confirmed) return;
+    setAdminPending(true);
+    setNotice("");
+    setError("");
+    try {
+      const result = await api("/macos/guest-admin", { enabled });
+      setAdmin(result.admin);
+      setNotice(result.admin ? "管理员权限已开启" : "管理员权限已关闭");
+    } catch (failure) { setError(failure.message); }
+    finally { setAdminPending(false); }
+  }
   useEffect(() => {
     if (!password) return;
     const timer = setTimeout(() => setPassword(""), 30_000);
@@ -68,8 +152,12 @@ export function GuestLoginDetails({ installed, username, passwordPending }) {
       <dl className="vm-guest-details">
         <div><dt>用户名</dt><dd>{username ? <code>{username}</code> : "暂未读取到"}</dd></div>
         <div><dt>密码</dt><dd>{password ? <code>{password}</code> : <span aria-label="密码已隐藏">••••••••</span>}</dd></div>
+        <div><dt>管理员权限</dt><dd>{admin === null ? (ready ? "正在读取…" : "启动客机后可查看") : admin ? "已开启" : "未开启"}</dd></div>
       </dl>
       {passwordPending && <p className="vm-note">客机密码待同步，请使用上次确认的密码。</p>}
+      <p className="vm-note">{admin === false
+        ? "当前是普通用户，安装应用时的管理员认证会失败。开启管理员权限后，用上面的用户名和密码认证。"
+        : "安装应用或修改系统设置要求管理员认证时，输入上面的用户名和密码。安装时出现的 cagesetup 只在首次设置期间有效。"}</p>
       <div className="vm-actions">
         {password ? <>
           <button type="button" onClick={() => setPassword("")}><EyeOff size={15} aria-hidden="true" />隐藏密码</button>
@@ -78,6 +166,12 @@ export function GuestLoginDetails({ installed, username, passwordPending }) {
         </> : <button type="button" disabled={loading} onClick={reveal}>
           {loading ? <LoaderCircle size={15} className="spin" aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
           {loading ? "正在读取…" : "查看密码"}
+        </button>}
+        {admin === false && <button type="button" className="primary" disabled={adminPending || !ready} onClick={() => changeAdmin(true)}>
+          {adminPending ? <LoaderCircle size={15} className="spin" aria-hidden="true" /> : <ShieldCheck size={15} aria-hidden="true" />}开启管理员权限
+        </button>}
+        {admin === true && <button type="button" className="vm-quiet" disabled={adminPending || !ready} onClick={() => changeAdmin(false)}>
+          {adminPending && <LoaderCircle size={15} className="spin" aria-hidden="true" />}关闭管理员权限
         </button>}
       </div>
       {notice && <p className="vm-success" role="status">{notice}</p>}

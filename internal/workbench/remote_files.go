@@ -3,6 +3,7 @@ package workbench
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"path/filepath"
 )
 
@@ -26,10 +27,11 @@ func (t connectionTransport) CloseIdleConnections() {
 // A native picker captures the connection before the user selects a file.
 // Matching it here prevents a slow picker from sending that file to a newly
 // selected server. Native calls from old local builds may omit it only locally.
+// A controller without connection contexts serves only its local workload.
 func (c *controllerClient) bindConnection(expected string) (ClientContext, error) {
 	var current ClientContext
 	status, err := c.call("GET", "/api/client/context", nil, &current)
-	if err == nil && status == http.StatusNotFound && expected == "" {
+	if err == nil && status == http.StatusNotFound && (expected == "" || expected == "local") {
 		return ClientContext{Mode: "local", ConnectionID: "local"}, nil
 	}
 	if err != nil || status != http.StatusOK {
@@ -47,6 +49,20 @@ func (c *controllerClient) bindConnection(expected string) (ClientContext, error
 	c.connectionID = current.ConnectionID
 	c.client.Transport = connectionTransport{base: c.client.Transport, id: current.ConnectionID}
 	return current, nil
+}
+
+// openFileSession signs in with the launch ticket as the local view that ran
+// this command, then binds the transfer to the expected connection. Guest
+// controllers admit only that trusted view, as for agent requests.
+func (c *controllerClient) openFileSession(connectionID string) error {
+	entry, _ := url.Parse(c.launch.URL)
+	status, err := c.call("POST", "/api/session", map[string]string{"token": entry.Fragment}, nil)
+	if err != nil || status != http.StatusOK {
+		return errors.New("无法连接剪贴板会话")
+	}
+	c.setTrustedViewCookie(entry)
+	_, err = c.bindConnection(connectionID)
+	return err
 }
 
 func clientDownloadProfile(profile string, current ClientContext) (string, error) {

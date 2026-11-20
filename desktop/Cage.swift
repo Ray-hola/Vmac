@@ -267,6 +267,10 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         file.addItem(withTitle: "关闭窗口（保留环境）", action: #selector(closeWindow), keyEquivalent: "")
         if nativeVMWorkbench {
             file.addItem(.separator())
+            let clipboard = file.addItem(withTitle: "共享剪贴板（文字、图片和文件）", action: #selector(toggleGuestClipboard(_:)), keyEquivalent: "")
+            clipboard.state = Self.vmacPreference("vmac.shareClipboardContent") ? .on : .off
+            let input = file.addItem(withTitle: "用 Mac 输入法在客机中打字", action: #selector(toggleHostInputMethod(_:)), keyEquivalent: "")
+            input.state = Self.vmacPreference("vmac.hostInputMethod") ? .on : .off
             for (title, action) in [
                 ("上传文件到客机…", "upload"),
                 ("传文字或图片到客机", "clipboard-to-guest"),
@@ -379,6 +383,25 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             guestSidebar?.showNotice("请先打开客机桌面")
         }
         #endif
+    }
+
+    // Clipboard sharing and the Mac input method default to on.
+    private static func vmacPreference(_ key: String) -> Bool {
+        UserDefaults.standard.object(forKey: key) == nil || UserDefaults.standard.bool(forKey: key)
+    }
+    @objc private func toggleGuestClipboard(_ sender: NSMenuItem) {
+        let enabled = sender.state != .on
+        sender.state = enabled ? .on : .off
+        UserDefaults.standard.set(enabled, forKey: "vmac.shareClipboardContent")
+        publishWindowVisibility()
+        guestSidebar?.showNotice(enabled ? "客机桌面可见时，复制的文字、图片和文件会双向同步" : "剪贴板共享已关闭")
+    }
+    @objc private func toggleHostInputMethod(_ sender: NSMenuItem) {
+        let enabled = sender.state != .on
+        sender.state = enabled ? .on : .off
+        UserDefaults.standard.set(enabled, forKey: "vmac.hostInputMethod")
+        publishWindowVisibility()
+        guestSidebar?.showNotice(enabled ? "在客机里打字时使用 Mac 当前的输入法；客机请切换到英文（ABC）输入" : "已改用客机自己的输入法")
     }
 
     private func selectGuestDestination(_ destination: String) {
@@ -997,6 +1020,11 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private func publishWindowVisibility(forceHidden: Bool = false) {
         guard window != nil, webView != nil else { return }
         let visible = !forceHidden && window.isVisible && !window.isMiniaturized && window.occlusionState.contains(.visible)
+        #if CAGE_EMBEDDED_VM
+        if nativeVMWorkbench {
+            _ = (visible && guestDesktopVisible ? "clipboard-visible" : "clipboard-hidden").withCString { performEmbeddedUtility($0) }
+        }
+        #endif
         webView.evaluateJavaScript("window.cageWindowVisible = \(visible ? "true" : "false"); window.dispatchEvent(new Event('cage-window-visibility'));", completionHandler: nil)
     }
     func windowDidChangeOcclusionState(_ notification: Notification) { publishWindowVisibility() }

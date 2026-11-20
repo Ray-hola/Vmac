@@ -11,7 +11,7 @@ enum CagePalette {
     static let success = NSColor(srgbRed: 82/255, green: 112/255, blue: 82/255, alpha: 1)
     static let warn = NSColor(srgbRed: 178/255, green: 116/255, blue: 29/255, alpha: 1)
     static func mono(_ size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
-        .monospacedSystemFont(ofSize: size, weight: weight)
+        .monospacedDigitSystemFont(ofSize: size, weight: weight)
     }
 }
 
@@ -365,20 +365,44 @@ private final class SidebarLamp: NSButton {
 }
 
 private final class SidebarSpeedCircle: NSView {
-    var upload = true
-    var value: Double? { didSet { needsDisplay = true } }
+    var upload = true { didSet { updateLabels() } }
+    var value: Double? { didSet { updateLabels() } }
+    private let arrow = NSTextField(labelWithString: "")
+    private let speed = NSTextField(labelWithString: "")
+    private let unit = NSTextField(labelWithString: "")
     override var isFlipped: Bool { true }
-    override func draw(_ dirtyRect: NSRect) {
-        let rect = bounds.insetBy(dx: 1,dy: 1)
-        CagePalette.line.setStroke();let ring=NSBezierPath(ovalIn: rect);ring.lineWidth=1;ring.stroke()
-        let speed = speedParts(value)
-        let style = NSMutableParagraphStyle();style.alignment = .center
-        func text(_ text: String,_ y: CGFloat,_ font: CGFloat,_ color: NSColor) {
-            (text as NSString).draw(in: NSRect(x: 1,y: y,width: bounds.width-2,height: 18),withAttributes: [.font:CagePalette.mono(font,weight:.medium),.foregroundColor:color,.paragraphStyle:style])
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        for (label, size, color) in [(arrow, CGFloat(11), CagePalette.accent),
+                                     (speed, 13, CagePalette.ink), (unit, 10, CagePalette.muted)] {
+            label.alignment = .center
+            label.font = .monospacedDigitSystemFont(ofSize: size, weight: .medium)
+            label.textColor = color
+            label.cell?.usesSingleLineMode = true
+            label.setAccessibilityElement(false)
+            addSubview(label)
         }
-        text(upload ? "↑" : "↓",4,11,upload ? CagePalette.accent : CagePalette.success)
-        text(speed.0,19,13,CagePalette.ink)
-        text(speed.1,36,10,CagePalette.muted)
+        updateLabels()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func layout() {
+        super.layout()
+        for (label, y) in [(arrow, CGFloat(4)), (speed, 19), (unit, 36)] {
+            label.frame = NSRect(x: 1, y: y, width: max(0, bounds.width - 2), height: 16)
+        }
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        CagePalette.line.setStroke()
+        let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
+        ring.lineWidth = 1
+        ring.stroke()
+    }
+    private func updateLabels() {
+        let parts = speedParts(value)
+        arrow.stringValue = upload ? "↑" : "↓"
+        arrow.textColor = upload ? CagePalette.accent : CagePalette.success
+        speed.stringValue = parts.0
+        unit.stringValue = parts.1
     }
 }
 private func speedParts(_ value: Double?) -> (String,String) {
@@ -531,7 +555,7 @@ final class CageGuestSidebar: NSView {
     var onSelect:((String)->Void)?
     private var rows:[String:GuestNavigationButton]=[:]
     private let destinations = [("desktop","客机桌面","macwindow"),("management","虚拟机管理","internaldrive"),("proxy","代理管理","network"),("checks","环境检测","checkmark.shield")]
-    private let management = [("space","存储空间","externaldrive"),("profiles","虚拟机切换","square.on.square"),("login","客机账户","person.crop.circle"),("timezone","时区","clock")]
+    private let management = [("space","存储空间","externaldrive"),("profiles","虚拟机切换","square.on.square"),("login","客机账户","person.crop.circle"),("timezone","时区","clock"),("input","输入法","keyboard")]
     private var managementExpanded = true
     private let brand=NSTextField(labelWithString:"VMac_")
     private let logo=NSImageView()
@@ -591,17 +615,23 @@ final class CageGuestSidebar: NSView {
     private func layoutNavigation() {
         let compact = bounds.width < 146
         var y = machine.frame.maxY + 14
+        let parentHeight: CGFloat = compact ? 33 : 36
+        let childHeight: CGFloat = compact ? 27 : 29
+        let count = managementExpanded ? management.count : 0
+        let preferred = CGFloat(destinations.count) * (parentHeight + 2) + CGFloat(count) * (childHeight + 2)
+        let scale = bounded((telemetry.frame.minY - y - 8) / preferred)
         func place(_ id: String, height: CGFloat) {
-            rows[id]?.frame = NSRect(x: 10, y: y, width: max(0, bounds.width-20), height: height)
+            let fitted = floor((height + 2) * scale)
+            rows[id]?.frame = NSRect(x: 10, y: y, width: max(0, bounds.width-20), height: max(0, fitted-2))
             rows[id]?.needsLayout = true
-            y += height + 2
+            y += fitted
         }
         for (id, _, _) in destinations {
-            place(id, height: compact ? 33 : 36)
+            place(id, height: parentHeight)
             if id == "management" {
                 for (child, _, _) in management {
                     rows[child]?.isHidden = !managementExpanded
-                    if managementExpanded { place(child, height: compact ? 27 : 29) }
+                    if managementExpanded { place(child, height: childHeight) }
                 }
             }
         }
@@ -620,12 +650,12 @@ final class CageGuestSidebar: NSView {
         logo.frame=compact ? NSRect(x:(bounds.width-32)/2,y:20,width:32,height:32) : NSRect(x:14,y:22,width:28,height:28)
         brand.frame=NSRect(x:50,y:21,width:max(0,bounds.width-60),height:28)
         machine.frame = NSRect(x: 10, y: 64, width: max(0, bounds.width-20), height: compact ? 46 : 56)
-        layoutNavigation()
         settingsRow.frame = NSRect(x: 10, y: bounds.height-44, width: max(0, bounds.width-20), height: 34)
         settingsRow.needsLayout = true
         let height = SidebarTelemetry.preferredHeight(width: bounds.width)
         telemetry.frame=NSRect(x:0,y:settingsRow.frame.minY-6-height,width:bounds.width,height:height)
         telemetry.needsLayout=true
+        layoutNavigation()
     }
     private func pillTarget() -> NSRect {
         rows[highlighted]?.frame ?? .zero
