@@ -2,6 +2,7 @@ import React from "react";
 import { ArrowRight, Check, HardDrive, LoaderCircle, Monitor, Network, Play, Power, RotateCw, ShieldCheck, X } from "lucide-react";
 import { isolationSummary } from "./safety-state.mjs";
 import { gib } from "./vmac-ui";
+import { logo } from "./brand-logo";
 
 const steps = [["vm", "启动虚拟机"], ["guest", "连接客机"], ["network", "网络检查"], ["desktop", "打开桌面"]];
 
@@ -46,6 +47,21 @@ export function GuestOverview({ status, network, request, disk, onStart, onResta
     { id: "space", icon: HardDrive, label: "虚拟磁盘", value: disk ? `${gib(disk.bytes)} GiB` : status.guest_system === "macos" ? "正在读取…" : "尚未安装",
       detail: "扩大磁盘、清理缓存或切换客机", tone: "idle" },
   ];
+  const progress = <ol className="vm-steps" aria-label="启动进度">
+    {steps.map(([id, label], index) => <li key={id} className={states[id]}>
+      <span className="vm-step-dot">{states[id] === "done" ? <Check size={12} strokeWidth={3} /> : states[id] === "failed" ? <X size={12} strokeWidth={3} /> : states[id] === "active" ? <span className="vm-step-pulse" /> : index + 1}</span>
+      <span className="vm-step-label">{label}</span>
+    </li>)}
+  </ol>;
+  // While the guest comes up there is nothing to manage: show only the progress.
+  if (phase === "connecting" || (phase === "busy" && job.kind !== "stop")) {
+    return <section className="vm-boot" aria-live="polite">
+      <img className="vm-boot-logo" src={logo} alt="" />
+      <h2>{copy[0]}</h2>
+      <p role="status">{copy[1]}</p>
+      {progress}
+    </section>;
+  }
   return <div className="vm-overview">
     <section className={`vm-card vm-hero ${phase}`} aria-live="polite">
       <div className="vm-monitor" aria-hidden="true">
@@ -65,12 +81,7 @@ export function GuestOverview({ status, network, request, disk, onStart, onResta
           {status.vm_running && phase !== "busy" && <button className="vm-quiet large" onClick={onStop}><Power size={15} />停止</button>}
         </div>
       </div>
-      <ol className="vm-steps" aria-label="启动进度">
-        {steps.map(([id, label], index) => <li key={id} className={states[id]}>
-          <span className="vm-step-dot">{states[id] === "done" ? <Check size={12} strokeWidth={3} /> : states[id] === "failed" ? <X size={12} strokeWidth={3} /> : states[id] === "active" ? <span className="vm-step-pulse" /> : index + 1}</span>
-          <span className="vm-step-label">{label}</span>
-        </li>)}
-      </ol>
+      {progress}
     </section>
     <div className="vm-tiles">
       {tiles.map(({ id, icon: Icon, label, value, detail, tone }) => <button key={id} className={`vm-card vm-tile ${tone}`} onClick={() => onNavigate(id)}>

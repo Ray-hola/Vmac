@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shellStatus } from "./vmac-shell.mjs";
+import { shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
 
 const now = Date.parse("2026-11-20T12:00:00Z");
 const later = "2026-11-20T12:10:00Z";
@@ -38,3 +38,24 @@ test("the network gate decides the rest", () => {
   assert.deepEqual(status(gate("closed")), { tone: "warn", detail: "外网已关闭" });
   assert.deepEqual(status(running), { tone: "warn", detail: "外网状态待确认" });
 });
+
+const stopped = { vm_running: false };
+const allowed = { enabled: true, attempted: false, installed: true, setup: false };
+test("a stopped, installed guest starts on launch", () => {
+  assert.equal(shouldAutoStart(stopped, allowed), true);
+});
+for (const [name, value, options] of [
+  ["the setting is off", stopped, { ...allowed, enabled: false }],
+  ["it was already tried this launch", stopped, { ...allowed, attempted: true }],
+  ["the guest is not installed", stopped, { ...allowed, installed: false }],
+  ["setup is still pending", stopped, { ...allowed, setup: true }],
+  ["there is no status yet", null, allowed],
+  ["the guest is already running", { vm_running: true }, allowed],
+  ["another job is running", { vm_running: false, job: { running: true, kind: "stop" } }, allowed],
+  ["the last job failed", { vm_running: false, job: { running: false, error: "boom" } }, allowed],
+  ["storage needs recovery", { vm_running: false, storage_recovery: { required: true } }, allowed],
+]) {
+  test(`no automatic start when ${name}`, () => {
+    assert.equal(shouldAutoStart(value, options), false);
+  });
+}

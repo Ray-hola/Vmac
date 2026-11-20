@@ -5,7 +5,7 @@ import { useAccount } from "./account";
 import { requestMacOSRecovery } from "./macos-recovery";
 import { Modal } from "./modal";
 import { networkState } from "./safety-state.mjs";
-import { shellStatus } from "./vmac-shell.mjs";
+import { shellStatus, shouldAutoStart } from "./vmac-shell.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
 import { SpaceManagement } from "./space-management";
@@ -145,6 +145,12 @@ export function NativeGuestHome({ setup = null }) {
         if (!acknowledged) {
           acknowledged = true;
           void native("workbenchReady").catch(() => {});
+          // Opening VMac brings the guest up, like opening a laptop.
+          let enabled = true;
+          try { enabled = localStorage.getItem("vmac.autoStartGuest") !== "0"; } catch { /* storage unavailable: keep the default */ }
+          if (shouldAutoStart(next, { enabled, attempted: false, installed: next.guest_system === "macos", setup: setupActive.current })) {
+            void lifecycleAction.current?.("start");
+          }
         }
         if (restartPending.current && (!next.vm_running || (next.job?.kind === "restart" && next.job.running))) restartPending.current = false;
         if (wasRunning && !next.vm_running) {

@@ -20,3 +20,10 @@ export function shellStatus(status, { setup = false, now = Date.now() } = {}) {
   const [tone, detail] = networkText[networkState(status, now).mode] || ["warn", "外网状态待确认"];
   return { tone, detail };
 }
+
+// Whether opening VMac should start the guest by itself. Only a guest that is
+// installed, stopped and in no need of attention is started, once per launch.
+export function shouldAutoStart(status, { enabled, attempted, installed, setup }) {
+  return Boolean(enabled && !attempted && installed && !setup && status && !status.vm_running &&
+    !status.job?.running && !status.job?.error && !status.storage_recovery?.required);
+}
