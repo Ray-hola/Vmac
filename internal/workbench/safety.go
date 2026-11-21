@@ -979,7 +979,7 @@ func (s *Server) runSafetyCheck() (returned error) {
 		if networkErr != nil {
 			evidence = usererror.Display("读取代理检测结果", networkErr, "请确认环境仍在运行。").Error()
 		}
-		set("proxy_transport", cage.CheckUnknown, evidence, "在网络与代理设置中确认节点已应用并能连接；再重新检测")
+		set("proxy_transport", cage.CheckUnknown, evidence, "在"+version.ProxyPlace()+"中确认节点已应用并能连接；再重新检测")
 	}
 	dnsBypass, dnsBypassConfirmed := dnsBypassIssue(boundary, linuxProbe)
 	dnsConstrained := boundaryErr == nil && !boundary.PublicDNSAnswered && after.Counters.DNSDenied > state.Counters.DNSDenied && dnsBypass == ""

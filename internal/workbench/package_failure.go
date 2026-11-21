@@ -6,6 +6,7 @@ import (
 
 	"github.com/Ray-hola/Vmac/internal/diagnostics"
 	"github.com/Ray-hola/Vmac/internal/usererror"
+	"github.com/Ray-hola/Vmac/internal/version"
 )
 
 const (
@@ -92,9 +93,9 @@ func packageInstallFailure(action string, cause error, log string) error {
 		patterns     []string
 		reason, next string
 	}{
-		{[]string{"temporary failure resolving", "could not resolve", "name or service not known"}, "APT 无法解析下载服务器域名", "请在网络与代理设置中检查所选节点和 DNS，再继续安装。"},
+		{[]string{"temporary failure resolving", "could not resolve", "name or service not known"}, "APT 无法解析下载服务器域名", "请在" + version.ProxyPlace() + "中检查所选节点和 DNS，再继续安装。"},
 		{[]string{"connection timed out", "timed out", "could not connect to", "unable to connect to", "connection failed", "connection refused"}, "APT 连接下载服务器失败或超时", "请检查所选代理是否可用，再继续安装。"},
-		{[]string{"proxy authentication required", "407 proxy"}, "代理服务器拒绝了当前登录凭据", "请在网络与代理设置中更新代理账号或订阅，再应用节点。"},
+		{[]string{"proxy authentication required", "407 proxy"}, "代理服务器拒绝了当前登录凭据", "请在" + version.ProxyPlace() + "中更新代理账号或订阅，再应用节点。"},
 		{[]string{aptNotFoundNeedle, "has no installation candidate"}, "软件源中找不到所需的软件包", "请确认软件源可访问且 apt update 已成功，再继续安装。"},
 		{[]string{"no space left on device"}, "磁盘空间不足，无法继续写入", "请释放环境所在磁盘的空间后继续。"},
 	} {

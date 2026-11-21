@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pageGroups, pages, pageFor, embeddedSections, settingsFooterVisible, leavingNeedsConfirm, settingsNeedReload, settingsDiffer, leavePrompts, anchorFor } from "./vmac-pages.mjs";
+import { pageGroups, pages, pageFor, placeName, embeddedSections, settingsFooterVisible, leavingNeedsConfirm, settingsNeedReload, settingsDiffer, leavePrompts, anchorFor } from "./vmac-pages.mjs";
 
 const ids = pageGroups.flatMap(group => group.pages);
 test("ten pages, each listed once and fully described", () => {
@@ -87,3 +87,16 @@ test("an old section that sits below other content has an anchor to scroll to", 
   assert.equal(anchorFor("region"), "vmac-region");
   for (const other of ["proxy", "general", "settings", "account", "nonsense", undefined]) assert.equal(anchorFor(other), null, String(other));
 });
+
+test("a hint names the page that now holds a setting", () => {
+  assert.equal(placeName("account", true), "账户与安全");
+  assert.equal(placeName("network", true), "代理线路");
+  assert.equal(placeName("timezone", true), "账户与系统");
+  assert.equal(placeName("management", true), "虚拟机与磁盘");
+});
+test("outside VMac a hint still names the settings panel", () => {
+  assert.equal(placeName("account", false), "设置 → 账户");
+  assert.equal(placeName("network", false), "网络与代理设置");
+  assert.equal(placeName("management", false), "虚拟机管理");
+});
+

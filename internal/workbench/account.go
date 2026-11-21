@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	"github.com/Ray-hola/Vmac/internal/guestos"
+	"github.com/Ray-hola/Vmac/internal/version"
 )
 
 func (s *Server) macAccountHost() bool {
@@ -57,7 +58,7 @@ func (s *Server) accountAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if (action == "lock" || action == "logout" || action == "device-enroll") && s.account.view().TrustedLocal {
-		http.Error(w, "请先在本机的「设置 → 账户」设置密码", http.StatusConflict)
+		http.Error(w, "请先在本机的"+version.AccountPlace()+"设置密码", http.StatusConflict)
 		return
 	}
 	var input struct {
