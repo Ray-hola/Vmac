@@ -173,18 +173,57 @@ func macOSComponentsDrifted(receipt []byte, required cage.GuestManifest) bool {
 	return installed.System != guestos.MacOS || installed.Protocol != required.Protocol || installed.Revision != required.Revision
 }
 
+// The guest's SSH channel can drop for a moment right after boot, while its
+// login session and services settle. While starting the guest, reading the
+// component receipt waits for it rather than failing the whole start: about
+// a minute in all.
+var macOSReceiptRetryWaits = []time.Duration{2 * time.Second, 3 * time.Second, 5 * time.Second, 10 * time.Second, 10 * time.Second, 15 * time.Second}
+
+// transientGuestSSH reports whether err is the SSH connection itself failing
+// (ssh exits 255) or timing out, not the guest command.
+func transientGuestSSH(err error) bool {
+	var exit *exec.ExitError
+	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &exit) && exit.ExitCode() == 255)
+}
+
+// retryGuestSSH runs one guest command, again after each wait for as long as
+// the SSH connection is what fails. Any other outcome is returned at once.
+func retryGuestSSH(ctx context.Context, waits []time.Duration, run func(context.Context) ([]byte, error)) ([]byte, error) {
+	out, err := run(ctx)
+	for _, wait := range waits {
+		if err == nil || !transientGuestSSH(err) {
+			break
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return out, err
+		case <-timer.C:
+		}
+		out, err = run(ctx)
+	}
+	return out, err
+}
+
 // checkMacOSComponents runs once per connection. Without it a guest left on
 // older components looks ready while its services fail, and every client
 // retries those failures instead of offering the component update.
-func (s *Server) checkMacOSComponents(ctx context.Context) error {
+func (s *Server) checkMacOSComponents(ctx context.Context, waits []time.Duration) error {
 	kit, system := s.nativeComponentKit()
 	required, err := guestos.RequiredNativeComponents(kit, system)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	receipt, err := s.guest(ctx, macOSComponentReceiptProbe)
+	receipt, err := retryGuestSSH(ctx, waits, func(ctx context.Context) ([]byte, error) {
+		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		out, err := s.guest(attempt, macOSComponentReceiptProbe)
+		if err != nil && errors.Is(attempt.Err(), context.DeadlineExceeded) {
+			err = context.DeadlineExceeded
+		}
+		return out, err
+	})
 	if err != nil {
 		return fmt.Errorf("无法读取原客机的组件版本：%w", err)
 	}
@@ -209,7 +248,13 @@ func (s *Server) attachMacOSGuestForBoot(syncComponents bool) error {
 	s.mu.Unlock()
 	setupPending := s.macSetupPending()
 	if checkComponents && !setupPending {
-		if checkErr := s.checkMacOSComponents(s.operationContext()); syncComponents && checkErr != nil {
+		// Only a start waits for SSH to settle; the reconnection monitor calls
+		// again by itself and must not be held up.
+		var waits []time.Duration
+		if syncComponents {
+			waits = macOSReceiptRetryWaits
+		}
+		if checkErr := s.checkMacOSComponents(s.operationContext(), waits); syncComponents && checkErr != nil {
 			s.mu.Lock()
 			s.guestUpdateRequired = true
 			s.mu.Unlock()

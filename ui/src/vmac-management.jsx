@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Check, Clock3, Copy, Eye, EyeOff, HardDrive, Keyboard, KeyRound, LoaderCircle, Minus, Monitor, Plus, ShieldCheck, X } from "lucide-react";
 import { api, native } from "./api";
 import { StatusChip, gib } from "./vmac-ui";
+import { removalNotice } from "./vmac-shell.mjs";
 
 async function waitForJob(accepted) {
   for (;;) {
@@ -53,7 +54,7 @@ export function GuestInputSources({ ready, onOpen }) {
       <span className="vm-card-icon"><Keyboard size={17} aria-hidden="true" /></span>
       <div><h2>客机输入法</h2><p>{ready ? "在客机键盘设置中添加或移除输入法。在客机桌面按 Control + 空格切换。" : "启动并登录 macOS 客机后即可管理输入法。"}</p></div>
     </div></div>
-    <p className="vm-note">在客机桌面里打字时，默认直接使用 Mac 上当前的输入法（例如豆包、搜狗），词库和设置都是 Mac 上那一份。客机这边请保持英文（ABC）输入，避免两边同时转换；不需要时可在菜单栏「文件 → 用 Mac 输入法在客机中打字」关闭。</p>
+    <p className="vm-note">在客机桌面里打字时，默认直接使用 Mac 上当前的输入法（例如豆包、搜狗），词库和设置都是 Mac 上那一份。客机这边请保持英文（ABC）输入，避免两边同时转换；不需要时可在「共享与传输」里关闭。</p>
     {ready && <>
       {sources && <dl className="vm-guest-details">
         <div><dt>当前输入法</dt><dd>{sources.selected.map(id => inputSourceNames[id] || id).join("、") || "暂未读取到"}</dd></div>
@@ -174,7 +175,7 @@ export function GuestLoginDetails({ installed, ready, username, passwordPending,
           {adminPending && <LoaderCircle size={15} className="spin" aria-hidden="true" />}关闭管理员权限
         </button>}
       </div>
-      {notice && <p className="vm-success" role="status">{notice}</p>}
+      {notice && <p className="vm-success" role="status"><Check size={14} />{notice}</p>}
       {error && <p className="vm-error" role="alert">{error}</p>}
     </>}
   </section>;
@@ -295,13 +296,14 @@ export function VMProfiles({ status, onConfirm }) {
   const [adding, setAdding] = useState(false);
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   useEffect(() => {
     native("vmacProfiles").then(setProfiles).catch(failure => setError(failure.message));
   }, []);
   async function create(event) {
     event.preventDefault();
     if (!name.trim()) return;
-    setPending("create"); setError("");
+    setPending("create"); setError(""); setNotice("");
     try {
       setProfiles(await native("vmacCreateProfile", { name: name.trim() }));
       setName("");
@@ -315,11 +317,22 @@ export function VMProfiles({ status, onConfirm }) {
       body: status.vm_running ? "请保存客机中的工作。VMac 会先停止当前客机，再重新打开到所选环境。" : "VMac 会重新打开到所选环境。",
       confirm: "切换虚拟机",
     })) return;
-    setPending(profile.id); setError("");
+    setPending(profile.id); setError(""); setNotice("");
     try {
       if (status.vm_running) await waitForJob(await api("/stop", {}));
       await native("vmacSwitchProfile", { id: profile.id });
     } catch (failure) { setError(failure.message); setPending(""); }
+  }
+  // A guest's folder goes to the Trash, where Finder can put it back; the
+  // list takes it in again the next time this page opens.
+  async function remove(profile) {
+    if (!await onConfirm(removalNotice(profile))) return;
+    setPending(`remove:${profile.id}`); setError(""); setNotice("");
+    try {
+      setProfiles(await native("vmacDeleteProfile", { id: profile.id }));
+      setNotice(profile.size > 0 ? `已把「${profile.name}」移到废纸篓` : `已删除「${profile.name}」`);
+    } catch (failure) { setError(failure.message); }
+    finally { setPending(""); }
   }
   return <section className="vm-card vm-profiles-card">
     <div className="vm-card-head">
@@ -338,12 +351,16 @@ export function VMProfiles({ status, onConfirm }) {
       return <li key={profile.id} className={active ? "active" : ""}>
         <span className="vm-profile-icon"><Monitor size={18} /></span>
         <div className="vm-profile-text"><strong>{profile.name}</strong><small>{profile.installed ? "已安装 macOS" : "等待安装 · 切换后进入安装向导"}</small></div>
+        {profile.removable && <button className="vm-quiet danger" onClick={() => remove(profile)} disabled={Boolean(pending) || status.job?.running}>
+          {pending === `remove:${profile.id}` ? <><LoaderCircle size={14} className="spin" />正在删除…</> : "删除"}
+        </button>}
         {active ? <StatusChip tone="ok">当前客机</StatusChip>
           : <button onClick={() => switchTo(profile)} disabled={Boolean(pending) || status.job?.running}>
             {pending === profile.id ? <><LoaderCircle size={14} className="spin" />正在切换…</> : "切换"}
           </button>}
       </li>;
     })}</ul>}
+    {notice && <p className="vm-success" role="status"><Check size={14} />{notice}</p>}
     {error && <p className="vm-error" role="alert">{error}</p>}
   </section>;
 }

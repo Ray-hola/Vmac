@@ -10,6 +10,7 @@ import {
   sameTheme,
   colorGroups,
   terminalColorGroups,
+  resolveVariant,
 } from "./appearance-state.mjs";
 
 test("element overrides stay independent, reset returns to derived colors, and terminal follows live values", () => {
@@ -252,4 +253,15 @@ test("accessible presets keep text, state colors, focus, borders and all ANSI te
       );
       check(terminal.cursorAccent, terminal.cursor, threshold, "cursor text");
     }
+});
+
+test("VMac always resolves to the light variant", () => {
+  assert.equal(resolveVariant("dark", true, true), "light");
+  assert.equal(resolveVariant("system", true, true), "light");
+});
+test("the shared workbench follows the chosen mode or the system", () => {
+  assert.equal(resolveVariant("dark", false, false), "dark");
+  assert.equal(resolveVariant("light", true, false), "light");
+  assert.equal(resolveVariant("system", true, false), "dark");
+  assert.equal(resolveVariant("system", false, false), "light");
 });

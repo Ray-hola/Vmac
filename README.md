@@ -1,6 +1,6 @@
 # VMac
 
-<img alt="VMac 标志" align="right" width="84" src="assets/branding/vmac-mark.svg">
+<img alt="VMac 标志" align="right" width="84" src="assets/branding/vmac-otter.png">
 
 VMac 是 Apple Silicon Mac 上的 macOS 虚拟机工作台。客机画面通过 Apple Virtualization.framework 嵌在同一个应用窗口里，可运行 Claude Desktop 和其他 macOS 应用。
 

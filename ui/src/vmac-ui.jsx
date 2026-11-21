@@ -1,4 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 
 // A segmented control whose highlight slides to the selected option.
 export function Segmented({ items, value, onChange, label, disabled = false }) {
@@ -28,14 +29,52 @@ export function StatusChip({ tone = "idle", children, title }) {
   return <span className={`vm-chip ${tone}`} title={title}><i aria-hidden="true" />{children}</span>;
 }
 
+// A state in words with its dot, for use inside a line of text.
+export function State({ tone = "idle", children }) {
+  return <span className={`vm-state ${tone}`}><i aria-hidden="true" />{children}</span>;
+}
+
+// The top of a page: its name and what the page is for.
 export function PageHeader({ title, subtitle, aside }) {
   return <header className="vm-header">
-    <div className="vm-header-text">
+    <div>
       <h1>{title}</h1>
       {subtitle && <p>{subtitle}</p>}
     </div>
-    {aside && <div className="vm-header-aside">{aside}</div>}
+    {aside}
   </header>;
 }
 
-export const gib = bytes => Number((bytes / 2 ** 30).toFixed(bytes % 2 ** 30 ? 2 : 0));
+// A section: a heading over its rows. `label` only names the section for
+// assistive technology, for one that needs no visible heading.
+export function Group({ title, label, children }) {
+  return <section className="vm-section" aria-label={title || label}>
+    {title && <h2 className="vm-section-label">{title}</h2>}
+    <div className="vm-section-body">{children}</div>
+  </section>;
+}
+
+// One row of a group: what it is on the left, its control or value on the right.
+export function Row({ title, detail, children }) {
+  return <div className="vm-row">
+    <div className="vm-row-text"><span>{title}</span>{detail && <small>{detail}</small>}</div>
+    {children && <div className="vm-row-control">{children}</div>}
+  </div>;
+}
+
+// A row that opens another page: the whole row is the button, and what the
+// page currently says sits at the right.
+export function LinkRow({ title, detail, value, onClick }) {
+  return <button type="button" className="vm-row" onClick={onClick}>
+    <span className="vm-row-text"><span>{title}</span>{detail && <small>{detail}</small>}</span>
+    {value && <span className="vm-row-value">{value}</span>}
+    <ChevronRight size={16} className="vm-row-arrow" aria-hidden="true" />
+  </button>;
+}
+
+export function Toggle({ checked, onChange, label, disabled = false }) {
+  return <input type="checkbox" role="switch" className="vm-switch" aria-label={label}
+    checked={Boolean(checked)} disabled={disabled} onChange={event => onChange(event.target.checked)} />;
+}
+
+export { gib } from "./vmac-shell.mjs";

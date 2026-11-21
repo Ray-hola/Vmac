@@ -31,6 +31,13 @@ export const defaultAppearance = {
   fontSmoothing: true,
   reducedMotion: "system",
 };
+// The variant in effect. VMac is always light; the shared workbench follows
+// the chosen mode, or the system when the mode is "system".
+export function resolveVariant(mode, systemDark, vmac) {
+  if (vmac) return "light";
+  return mode === "system" ? (systemDark ? "dark" : "light") : mode;
+}
+
 export function normalizeAppearance(value = {}) {
   value = value && typeof value === "object" ? value : {};
   return {

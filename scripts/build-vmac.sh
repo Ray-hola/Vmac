@@ -75,7 +75,7 @@ go build -trimpath -tags "$tags" -ldflags "-s -w $lima_ldflags -X github.com/Ray
 xcrun swiftc -sdk "$SDKROOT" -module-cache-path "$CLANG_MODULE_CACHE_PATH" -D CAGE_EMBEDDED_VM \
     -O -target arm64-apple-macosx14.0 -parse-as-library -framework Cocoa -framework WebKit -framework Security \
     -framework LocalAuthentication -framework Virtualization -framework IOKit -framework SystemConfiguration -lresolv -lc++ \
-    desktop/Cage.swift desktop/GuestSidebar.swift desktop/MacKeyboard.swift desktop/NativeInput.swift desktop/Updates.swift \
+    desktop/Cage.swift desktop/GuestSidebar.swift desktop/VMacPalette.swift desktop/VMacShell.swift desktop/VMacToolbar.swift desktop/VMacToast.swift desktop/MacKeyboard.swift desktop/NativeInput.swift desktop/Updates.swift \
     desktop/AccountDevice.swift desktop/MacGuestLogin.swift "$stage/libVMac.a" -o "$bundle/Contents/MacOS/VMac"
 xcrun swiftc -sdk "$SDKROOT" -module-cache-path "$CLANG_MODULE_CACHE_PATH" \
     -O -target arm64-apple-macosx14.0 -parse-as-library -framework Cocoa -framework Security \
@@ -83,7 +83,7 @@ xcrun swiftc -sdk "$SDKROOT" -module-cache-path "$CLANG_MODULE_CACHE_PATH" \
 
 xcrun swiftc -sdk "$SDKROOT" -target arm64-apple-macosx14.0 -module-cache-path "$CLANG_MODULE_CACHE_PATH" \
     desktop/VMacLogo.swift -o "$stage/render-logo"
-"$stage/render-logo" "$stage/logo"
+"$stage/render-logo" "$stage/logo" assets/branding/vmac-otter.png
 cp "$stage/logo/VMac.icns" "$stage/logo/VMacMark.pdf" "$resources/"
 
 bash scripts/guest-os/package-macos-guest.sh "$resources/guest-os"

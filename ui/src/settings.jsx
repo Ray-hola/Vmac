@@ -38,6 +38,7 @@ import { MacOSRecoveryButton } from "./macos-recovery";
 import { ScreenSharingChecks } from "./macos-screen-sharing";
 import { AccountSettings } from "./account";
 import { AboutSettings } from "./about-settings";
+import { leavingNeedsConfirm, settingsFooterVisible } from "./vmac-pages.mjs";
 const sections = [
   ["account", "账户", UserRound],
   ["vault", "密码保险箱", KeyRound],
@@ -50,6 +51,11 @@ const sections = [
   ["project", "环境与恢复", RotateCcw],
   ["about", "关于", Info],
 ];
+// Inside a VMac page each part of a long section is a card of its own.
+function Block({ when, children }) {
+  return when ? <section className="vm-subcard">{children}</section> : children;
+}
+
 export function SettingsPanel({
   current,
   status,
@@ -57,6 +63,13 @@ export function SettingsPanel({
   onSaved,
   onConfirm,
   initialSection = "keyboard",
+  // Embedded, the panel is one section shown inside a VMac page: no sidebar
+  // of its own, and a save bar only while there is something to save.
+  embedded = false,
+  sections: embeddedSections = [],
+  onDirtyChange,
+  // Embedded, a jump to a section this panel does not show is the page's to make.
+  onOpenSection,
 }) {
   const [localKeyboard, setLocalKeyboard] = useState(() => clientKeyboard(current.keyboard));
   const [accountDirty, setAccountDirty] = useState(false);
@@ -95,6 +108,9 @@ export function SettingsPanel({
         JSON.stringify(canonicalExitPolicy(current[k]))
       : draft[k] !== current[k],
   );
+  const shows = (id) => (embedded ? embeddedSections.includes(id) : section === id);
+  // In VMac every switch is drawn the same way; see .vm-switch.
+  const nativeSwitch = embedded ? { className: "vm-switch" } : {};
   const busy =
     Boolean(status.job?.running) || Boolean(status.storage_recovery?.required) || probing || submitting || Boolean(jobId);
   // Project folders of the other guest systems are always read directly.
@@ -128,7 +144,7 @@ export function SettingsPanel({
         setError(status.job.error || status.job.message);
       } else {
         onSaved();
-        if (!proxyDirty) onClose();
+        if (!proxyDirty && !embedded) onClose();
       }
     }
   }, [status.job, jobId]);
@@ -197,6 +213,10 @@ export function SettingsPanel({
   const closeRef = useRef(close);
   closeRef.current = close;
   useEffect(() => {
+    onDirtyChange?.(leavingNeedsConfirm({ changed, accountDirty, proxyDirty, resourceDirty }));
+  }, [changed, accountDirty, proxyDirty, resourceDirty]);
+  useEffect(() => {
+    if (embedded) return undefined;
     const previous = document.activeElement;
     document.getElementById("settings-back")?.focus();
     const dismiss = (event) => {
@@ -215,8 +235,8 @@ export function SettingsPanel({
     };
   }, []);
   return (
-    <section className="settings-page" aria-label="设置">
-      <aside className="settings-sidebar">
+    <section className={embedded ? "settings-page settings-embedded" : "settings-page"} aria-label="设置">
+      {!embedded && <aside className="settings-sidebar">
         <button
           id="settings-back"
           className="back-to-workspace"
@@ -243,21 +263,26 @@ export function SettingsPanel({
             </button>
           ))}
         </nav>
-      </aside>
+      </aside>}
       <div className="settings-main">
-        <div className={section === "archived-sessions" ? "settings-content settings-content--archives" : section === "mobile" ? "settings-content settings-content--remote" : "settings-content"} ref={contentRef}>
-          {section === "appearance" && <AppearanceSettings />}
-          {section === "about" && <AboutSettings />}
-          {section === "archived-sessions" && <ArchivedSessions ready={status.ready && !busy} />}
-          {section === "vault" && <PasswordVaultSettings onConfirm={onConfirm} onDirty={setAccountDirty} />}
-          {section === "account" && <AccountSettings busy={busy} onDirty={setAccountDirty} />}
-          <fieldset className="settings-fields" disabled={busy && !(section === "project" && status.storage_recovery?.required)}>
-            {section === "mobile" && (isRemoteClient()
+        <div className={embedded ? "settings-content" : section === "archived-sessions" ? "settings-content settings-content--archives" : section === "mobile" ? "settings-content settings-content--remote" : "settings-content"} ref={contentRef}>
+          {shows("appearance") && <AppearanceSettings />}
+          {shows("about") && <AboutSettings />}
+          {shows("archived-sessions") && <ArchivedSessions ready={status.ready && !busy} />}
+          {shows("vault") && <PasswordVaultSettings onConfirm={onConfirm} onDirty={setAccountDirty} />}
+          {shows("account") && <AccountSettings busy={busy} onDirty={setAccountDirty} />}
+          <fieldset className="settings-fields" disabled={busy && !(shows("project") && status.storage_recovery?.required)}>
+            {shows("mobile") && (isRemoteClient()
               ? <section className="section-title"><h3>连接这台电脑</h3><p>请先切换到这台电脑的本机环境，再生成或管理手机配对码。</p></section>
               : <MobilePairSettings relay={draft.mobile_relay ?? ""} savedRelay={current.mobile_relay ?? ""} onChange={value => update("mobile_relay",value)} onConfirm={onConfirm} />)}
-            {section === "network" && (
+            {shows("network") && embedded && <span id="vmac-network" />}
+            {shows("network") && (
               <>
-                <ProxySettings
+                {embedded && <div className="section-title">
+                  <h3>加密 DNS 和出口规则</h3>
+                  <p>保存后会重启客机，让新的设置生效。</p>
+                </div>}
+                {!embedded && <ProxySettings
                   onDirty={setProxyDirty}
                   status={status}
                   onConfirm={onConfirm}
@@ -270,7 +295,7 @@ export function SettingsPanel({
                     }
                     await onSaved();
                   }}
-                />
+                />}
                 <label>
                   加密 DNS
                   <input
@@ -327,7 +352,8 @@ export function SettingsPanel({
                 </section>
               </>
             )}
-            {section === "region" && (
+            {shows("region") && <span id="vmac-region" />}
+            {shows("region") && (
               <>
                 <div className="section-title">
                   <h3>时区与语言</h3>
@@ -347,6 +373,7 @@ export function SettingsPanel({
                   </span>
                   <input
                     role="switch"
+                    {...nativeSwitch}
                     type="checkbox"
                     checked={draft.auto_timezone}
                     onChange={(e) => update("auto_timezone", e.target.checked)}
@@ -391,6 +418,7 @@ export function SettingsPanel({
                   </span>
                   <input
                     role="switch"
+                    {...nativeSwitch}
                     type="checkbox"
                     checked={Boolean(draft.auto_language)}
                     onChange={(e) => update("auto_language", e.target.checked)}
@@ -484,13 +512,15 @@ export function SettingsPanel({
                 </p>
               </>
             )}
-            {section === "keyboard" && (
+            {shows("keyboard") && (
               <>
                 <div className="section-title">
-                  <h3>通用</h3>
-                  <p>管理工作台的按键习惯与日常操作。</p>
+                  <h3>{embedded ? "Claude 终端" : "通用"}</h3>
+                  <p>{embedded ? "手机远程新建 Claude 会话时运行的命令。" : "管理工作台的按键习惯与日常操作。"}</p>
                 </div>
-                <label>
+                {/* The clock, key habits and shortcuts below belong to the
+                    shared workbench; VMac's native guest window has none of them. */}
+                {!embedded && <label>
                   时间显示格式
                   <InlineSelect inline
                     aria-label="时间显示格式"
@@ -500,10 +530,10 @@ export function SettingsPanel({
                     <option value="24">24 小时制</option>
                     <option value="12">12 小时制（AM/PM）</option>
                   </InlineSelect>
-                </label>
-                <p className="field-help">
+                </label>}
+                {!embedded && <p className="field-help">
                   默认使用 24 小时制。保存后更新工作台底部时钟，无需重启环境；12 小时制使用 AM/PM 区分上午和下午。
-                </p>
+                </p>}
                 <label>
                   Claude 终端启动命令
                   <input
@@ -516,10 +546,11 @@ export function SettingsPanel({
                   />
                 </label>
                 <p className="field-help">
-                  选择“Claude 终端”后，在所选项目中运行此命令，例如 claude --continue。
-                  留空使用 claude；保存后仅影响新建的 Claude 终端，退出 Claude 后可继续使用 shell。
+                  {embedded
+                    ? "例如 claude --continue。留空使用 claude；保存后只影响之后新建的会话。"
+                    : "选择“Claude 终端”后，在所选项目中运行此命令，例如 claude --continue。留空使用 claude；保存后仅影响新建的 Claude 终端，退出 Claude 后可继续使用 shell。"}
                 </p>
-                {typeof current.balanced_display === "boolean" && <label className="toggle-row">
+                {!embedded && typeof current.balanced_display === "boolean" && <label className="toggle-row">
                   <span>
                     <strong>优先流畅</strong>
                     <small>降低浏览器和 Claude Desktop 的清晰度，Linux 环境同时减少 Claude Desktop 的动效。下次启动环境时生效。</small>
@@ -527,7 +558,7 @@ export function SettingsPanel({
                   <input type="checkbox" role="switch" checked={draft.balanced_display}
                     onChange={(event) => update("balanced_display", event.target.checked)} />
                 </label>}
-                {typeof current.project_file_cache === "boolean" && linuxGuest && <label className="toggle-row">
+                {!embedded && typeof current.project_file_cache === "boolean" && linuxGuest && <label className="toggle-row">
                   <span>
                     <strong>项目文件缓存</strong>
                     <small>减少读取项目文件时与本机的往返。在本机上所做的改动最多 20 秒后在环境中可见，也可以在项目栏点“刷新项目文件”立即同步。下次启动环境时生效。</small>
@@ -535,6 +566,7 @@ export function SettingsPanel({
                   <input type="checkbox" role="switch" checked={draft.project_file_cache}
                     onChange={(event) => update("project_file_cache", event.target.checked)} />
                 </label>}
+                {!embedded && <>
                 <h4>键盘习惯</h4>
                 <div className="choice-list">
                   {[
@@ -592,15 +624,17 @@ export function SettingsPanel({
                     </div>
                   ))}
                 </div>
+                </>}
               </>
             )}
-            {section === "project" && (
+            {shows("project") && (
               <>
-                <div className="section-title">
+                {/* The page already carries this title. */}
+                {!embedded && <div className="section-title">
                   <h3>环境与恢复</h3>
                   <p>{status.upload_only ? "客机文件独立保存，可在应用中主动上传主机文件。" : isRemoteClient() ? "项目位于云端，VMac 中的改动会直接保存到云端文件。" : "本机与 VMac 中的改动会双向同步。"}</p>
-                </div>
-                {status.local_vm_storage && !isRemoteClient() && <EnvironmentStorage status={status} onConfirm={onConfirm} />}
+                </div>}
+                {status.local_vm_storage && !isRemoteClient() && <Block when={embedded}><EnvironmentStorage status={status} onConfirm={onConfirm} /></Block>}
                 {!status.upload_only && <>
                 <div className="setting-summary-row">
                   <span>当前项目</span>
@@ -626,11 +660,13 @@ export function SettingsPanel({
                   切换项目只改变新终端和文件编辑器的起始位置；已有终端、网页和登录态会保留。
                 </p>
                 </>}
-                {!status.storage_recovery?.required && <EnvironmentVersions status={status} onConfirm={onConfirm} />}
-                {status.guest_system === "macos" && status.vm_running && !status.storage_recovery?.required &&
-                  <MacOSRecoveryButton onConfirm={onConfirm} disabled={busy || changed} />}
-                {!status.storage_recovery?.required && <EnvironmentCache status={status} onConfirm={onConfirm} />}
-                {status.guest_system === "macos" && <section aria-label="客机系统权限">
+                {!status.storage_recovery?.required && <Block when={embedded}>
+                  <EnvironmentVersions status={status} onConfirm={onConfirm} />
+                  {status.guest_system === "macos" && status.vm_running &&
+                    <MacOSRecoveryButton onConfirm={onConfirm} disabled={busy || changed} />}
+                </Block>}
+                {!status.storage_recovery?.required && <Block when={embedded}><EnvironmentCache status={status} onConfirm={onConfirm} /></Block>}
+                {status.guest_system === "macos" && <section className={embedded ? "vm-subcard" : undefined} aria-label="客机系统权限">
                   <h4>客机系统权限</h4>
                   <p className="field-help">在客机系统设置中完成授权后，返回工作台继续使用。</p>
                   <div className="project-recovery-actions">
@@ -639,9 +675,9 @@ export function SettingsPanel({
                     <MacOSLogin maintenance="input" label="辅助功能权限" disabled={!status.ready || busy} onConfirm={onConfirm} />
                   </div>
                 </section>}
-                {status.guest_system === "macos" && !isRemoteClient() && <MacOSScreenSharingSettings status={status} disabled={!status.ready || busy} onError={setError} onConfirm={onConfirm} />}
-                {!status.storage_recovery?.required && <ResourceSettings status={status} onConfirm={onConfirm} onDirtyChange={setResourceDirty} />}
- <DiagnosticSettings />
+                {status.guest_system === "macos" && !isRemoteClient() && <Block when={embedded}><MacOSScreenSharingSettings status={status} disabled={!status.ready || busy} onError={setError} onConfirm={onConfirm} /></Block>}
+                {!status.storage_recovery?.required && <Block when={embedded}><ResourceSettings status={status} onConfirm={onConfirm} onDirtyChange={setResourceDirty} /></Block>}
+                <Block when={embedded}><DiagnosticSettings /></Block>
                 {status.can_restore && (
                   <button
                     className="text-button"
@@ -678,13 +714,19 @@ export function SettingsPanel({
                   className="text-button"
                   disabled={busy}
                   onClick={() => {
+                    setProbeFailed(false);
+                    setError("");
+                    // The timezone form lives on another page: go there and
+                    // leave this form as it is.
+                    if (embedded && !shows("region")) {
+                      onOpenSection?.("region");
+                      return;
+                    }
                     setDraft((previous) => ({
                       ...previous,
                       auto_timezone: false,
                       auto_language: false,
                     }));
-                    setProbeFailed(false);
-                    setError("");
                     setSection("region");
                   }}
                 >
@@ -694,7 +736,7 @@ export function SettingsPanel({
             </div>
           )}
         </div>
-        {(!["appearance", "browser", "account", "vault", "mobile", "archived-sessions", "project", "about"].includes(section) || changed) && (
+        {settingsFooterVisible({ embedded, section, changed, proxyDirty, saving: submitting || Boolean(jobId) }) && (
           <footer className="settings-footer">
             {" "}
             <>
@@ -709,7 +751,7 @@ export function SettingsPanel({
                       : "有尚未保存的修改"
                     : "没有未保存的修改"}
               </span>
-              <button onClick={close}>返回工作台</button>
+              {!embedded && <button onClick={close}>返回工作台</button>}
               <button
                 className="primary"
                 disabled={!changed || busy}

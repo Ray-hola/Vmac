@@ -24,7 +24,6 @@ enum CageProfile {
             "vmac.activeGuest": "vmac.activeGuest",
             "vmac.didOpenMigratedProfile": "vmac.didOpenMigratedProfile",
             "cage.nativeSidebarWidth": "vmac.nativeSidebarWidth",
-            "cage.windowAppearance": "vmac.windowAppearance",
         ]
         for (old, new) in keys where defaults.object(forKey: new) == nil {
             if let value = legacy[old] { defaults.set(value, forKey: new) }

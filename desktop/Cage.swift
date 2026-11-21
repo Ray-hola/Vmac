@@ -40,7 +40,12 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private var guestSidebar: CageGuestSidebar?
     private var guestContent: NSView!
     private var guestSplitView: NSSplitView?
-    private var preferredSidebarWidth: CGFloat = 176
+    private var vmacToolbar: VMacToolbarController?
+    private var toast: VMacToastView?
+    private var preferredSidebarWidth = VMacSidebarWidth.standard
+    private var shell = VMacShellState()
+    private var shellMenuItems: [VMacMenuKey: NSMenuItem] = [:]
+    private var preferenceMenuItems: [VMacPreference: NSMenuItem] = [:]
     private var accountDeviceBusy = false
     private var expectedPort = 0
     private var allowQuit = false
@@ -98,18 +103,20 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let path=Bundle.main.path(forResource:"VMac",ofType:"icns"),let icon=NSImage(contentsOfFile:path) { NSApp.applicationIconImage=icon }
-        let appearance = UserDefaults.standard.dictionary(forKey: nativeVMWorkbench ? "vmac.windowAppearance" : "cage.windowAppearance") ?? [:]
+        // VMac is always light and keeps no window appearance of its own.
+        let appearance = nativeVMWorkbench ? [:] : UserDefaults.standard.dictionary(forKey: "cage.windowAppearance") ?? [:]
         let mode = appearance["mode"] as? String ?? "system"
-        NSApp.appearance = mode == "system" ? nil : NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        NSApp.appearance = nativeVMWorkbench ? NSAppearance(named: .aqua) : mode == "system" ? nil : NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
         makeMenus()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 850), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = workbenchTitle
         window.titlebarAppearsTransparent = false
         window.backgroundColor = nativeVMWorkbench ? CagePalette.paper : NSColor(srgbRed: 247.0/255, green: 247.0/255, blue: 247.0/255, alpha: 1)
-        if nativeVMWorkbench { window.appearance = NSAppearance(named: .aqua) }
+        if nativeVMWorkbench { window.collectionBehavior.insert(.fullScreenPrimary) }
         window.minSize = NSSize(width: 820, height: 580)
         window.isReleasedWhenClosed = false
         window.delegate = self
+        if nativeVMWorkbench { installVMacToolbar() }
         window.setFrameAutosaveName("CageMainWindow")
         window.center()
         let config = WKWebViewConfiguration()
@@ -135,11 +142,10 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         content.wantsLayer = nativeVMWorkbench
         guestContent = content
         if nativeVMWorkbench {
-            let savedWidth = UserDefaults.standard.object(forKey: "vmac.nativeSidebarWidth") as? Double ?? 176
-            preferredSidebarWidth = CGFloat(min(260, max(64, savedWidth)))
+            preferredSidebarWidth = VMacSidebarWidth.restored(UserDefaults.standard.object(forKey: "vmac.sidebarWidth.v2") as? Double)
             let sidebar = CageGuestSidebar()
             sidebar.onSelect = { [weak self] destination in self?.selectGuestDestination(destination) }
-            let split = NSSplitView(frame: root.bounds)
+            let split = VMacSplitView(frame: root.bounds)
             split.isVertical = true
             split.dividerStyle = .thin
             sidebar.translatesAutoresizingMaskIntoConstraints = true
@@ -160,6 +166,16 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
                 split.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             ])
             split.setPosition(preferredSidebarWidth, ofDividerAt: 0)
+            // Floats over the bottom of the content, above the page and the guest view alike.
+            let toast = VMacToastView()
+            toast.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(toast)
+            NSLayoutConstraint.activate([
+                toast.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+                toast.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
+                toast.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -32),
+            ])
+            self.toast = toast
             window.minSize = NSSize(width: 1000, height: 640)
         } else {
             root.addSubview(content)
@@ -250,27 +266,30 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         if nativeVMWorkbench && CageProfile.activeProfile != CageProfile.defaultProfile {
             appMenu.addItem(withTitle: "返回原有 macOS 客机", action: #selector(returnFromNewProfile), keyEquivalent: "")
         }
-        appMenu.addItem(withTitle: "设置…", action: #selector(settings), keyEquivalent: ",")
+        shellMenuItems[.settings] = appMenu.addItem(withTitle: "设置…", action: #selector(settings), keyEquivalent: ",")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "隐藏 VMac", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        shellMenuItems[.hide] = appMenu.addItem(withTitle: "隐藏 VMac", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "显示全部", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出 VMac…", action: #selector(requestQuit), keyEquivalent: "q")
+        shellMenuItems[.quit] = appMenu.addItem(withTitle: "退出 VMac…", action: #selector(requestQuit), keyEquivalent: "q")
         let file = NSMenu(title: "文件")
-        file.addItem(withTitle: "打开项目…", action: #selector(openProject), keyEquivalent: "o")
-        file.addItem(.separator())
-        file.addItem(withTitle: "新建网页", action: #selector(newTab), keyEquivalent: "t")
-        let terminal = file.addItem(withTitle: "新建终端", action: #selector(newTerminal), keyEquivalent: "\r")
-        terminal.keyEquivalentModifierMask = [.command, .shift]
-        file.addItem(withTitle: "关闭当前标签", action: #selector(closeTab), keyEquivalent: "w")
-        file.addItem(.separator())
+        // These belong to the shared workbench; VMac has no projects, tabs or terminals.
+        if !nativeVMWorkbench {
+            file.addItem(withTitle: "打开项目…", action: #selector(openProject), keyEquivalent: "o")
+            file.addItem(.separator())
+            file.addItem(withTitle: "新建网页", action: #selector(newTab), keyEquivalent: "t")
+            let terminal = file.addItem(withTitle: "新建终端", action: #selector(newTerminal), keyEquivalent: "\r")
+            terminal.keyEquivalentModifierMask = [.command, .shift]
+            file.addItem(withTitle: "关闭当前标签", action: #selector(closeTab), keyEquivalent: "w")
+            file.addItem(.separator())
+        }
         file.addItem(withTitle: "关闭窗口（保留环境）", action: #selector(closeWindow), keyEquivalent: "")
         if nativeVMWorkbench {
             file.addItem(.separator())
             let clipboard = file.addItem(withTitle: "共享剪贴板（文字、图片和文件）", action: #selector(toggleGuestClipboard(_:)), keyEquivalent: "")
-            clipboard.state = Self.vmacPreference("vmac.shareClipboardContent") ? .on : .off
             let input = file.addItem(withTitle: "用 Mac 输入法在客机中打字", action: #selector(toggleHostInputMethod(_:)), keyEquivalent: "")
-            input.state = Self.vmacPreference("vmac.hostInputMethod") ? .on : .off
+            preferenceMenuItems = [.shareClipboardContent: clipboard, .hostInputMethod: input]
+            refreshPreferenceMenu()
             for (title, action) in [
                 ("上传文件到客机…", "upload"),
                 ("传文字或图片到客机", "clipboard-to-guest"),
@@ -292,11 +311,20 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         edit.addItem(withTitle: "全选", action: #selector(editSelectAll), keyEquivalent: "a")
         let editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: ""); editItem.submenu = edit; main.addItem(editItem)
         let view = NSMenu(title: "窗口")
-        view.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        let minimize = view.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         view.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
-        view.addItem(withTitle: "进入全屏", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "")
+        let fullScreen = view.addItem(withTitle: "进入全屏", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "")
+        if nativeVMWorkbench {
+            view.addItem(.separator())
+            shellMenuItems[.controlCenter] = view.addItem(withTitle: "控制中心", action: #selector(toggleControlCenter), keyEquivalent: "")
+            shellMenuItems[.minimize] = minimize
+            shellMenuItems[.fullScreen] = fullScreen
+        } else {
+            shellMenuItems.removeAll()
+        }
         let viewItem = NSMenuItem(title: "窗口", action: nil, keyEquivalent: ""); viewItem.submenu = view; main.addItem(viewItem)
         NSApp.mainMenu = main
+        refreshMenuKeys()
     }
     @objc private func editUndo(){edit("undo",fallback:"undo:")}
     @objc private func editRedo(){edit("redo",fallback:"redo:")}
@@ -323,29 +351,76 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         catch { let alert = NSAlert(error: error); alert.beginSheetModal(for: window) }
     }
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        64
+        shell.sidebarVisible ? VMacSidebarWidth.rail : 0
     }
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        min(260, splitView.bounds.width - 600)
+        shell.sidebarVisible ? VMacSidebarWidth.widest(in: splitView.bounds.width) : 0
+    }
+    func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
+        !shell.sidebarVisible
     }
     func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
         view !== guestSidebar
     }
     func splitView(_ splitView: NSSplitView, resizeSubviewsWithOldSize oldSize: NSSize) {
         guard splitView === guestSplitView, let sidebar = guestSidebar else { return }
-        let width = preferredSidebarWidth
-        let bounds = splitView.bounds
-        sidebar.frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
-        guestContent.frame = NSRect(x: width + splitView.dividerThickness, y: 0,
-            width: max(0, bounds.width - width - splitView.dividerThickness), height: bounds.height)
+        let frames = shellFrames(in: splitView)
+        sidebar.frame = frames.sidebar
+        guestContent.frame = frames.content
+    }
+    /// The sidebar keeps its width and slides off the left edge on the guest desktop.
+    private func shellFrames(in split: NSSplitView) -> (sidebar: NSRect, content: NSRect) {
+        let bounds = split.bounds, width = preferredSidebarWidth
+        guard shell.sidebarVisible else {
+            return (NSRect(x: -width - split.dividerThickness, y: 0, width: width, height: bounds.height), bounds)
+        }
+        return (NSRect(x: 0, y: 0, width: width, height: bounds.height),
+                NSRect(x: width + split.dividerThickness, y: 0, width: max(0, bounds.width - width - split.dividerThickness), height: bounds.height))
+    }
+    /// Shows the window in its current shell mode: sidebar, toolbar switch and shortcuts.
+    private func applyShell(animated: Bool) {
+        guard nativeVMWorkbench else { return }
+        vmacToolbar?.setControlCenterActive(shell.mode == .controlCenter)
+        vmacToolbar?.setToggleEnabled(shell.toggleAction() != .none)
+        refreshMenuKeys()
+        guard let split = guestSplitView, let sidebar = guestSidebar else { return }
+        let frames = shellFrames(in: split)
+        guard sidebar.frame != frames.sidebar || guestContent.frame != frames.content else { return }
+        if shell.sidebarVisible { sidebar.isHidden = false }
+        let finish = { [weak self] in
+            guard let self, let split = self.guestSplitView else { return }
+            sidebar.isHidden = !self.shell.sidebarVisible
+            split.needsDisplay = true
+        }
+        guard animated, window.isVisible, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            sidebar.frame = frames.sidebar; guestContent.frame = frames.content; finish(); return
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+            sidebar.animator().frame = frames.sidebar
+            self.guestContent.animator().frame = frames.content
+        }, completionHandler: finish)
+    }
+    /// `closing` is for the moment a window is about to close but still counts as visible.
+    private func refreshMenuKeys(closing: Bool = false) {
+        let visible = !closing && window?.isVisible == true && window?.isMiniaturized == false
+        for (key, item) in shellMenuItems {
+            let equivalent = VMacMenuKeys.equivalent(for: key, mode: shell.mode, windowVisible: visible)
+            item.keyEquivalent = equivalent.key
+            item.keyEquivalentModifierMask = equivalent.modifiers
+        }
+    }
+    func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = []) -> NSApplication.PresentationOptions {
+        nativeVMWorkbench ? vmacFullScreenOptions() : proposedOptions
     }
 
     func splitViewDidResizeSubviews(_ notification: Notification) {
         guard let split = notification.object as? NSSplitView, split === guestSplitView,
               NSApp.currentEvent?.type == .leftMouseDragged,
-              let width = guestSidebar?.frame.width, width >= 64, width <= 260 else { return }
+              shell.sidebarVisible, let width = guestSidebar?.frame.width, VMacSidebarWidth.remembers(width) else { return }
         preferredSidebarWidth = width
-        UserDefaults.standard.set(Double(width), forKey: "vmac.nativeSidebarWidth")
+        UserDefaults.standard.set(Double(width), forKey: "vmac.sidebarWidth.v2")
     }
 
     private func relaunchVMac(profile id: String, reply: @escaping (Any?, String?) -> Void) {
@@ -364,15 +439,29 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         }
     }
 
+    private var guestSlots: VMacGuestSlots { VMacGuestSlots(root: CageProfile.profileRoot, defaults: .standard) }
+    /// The guests for the management page. A guest that can be removed says
+    /// so and reports what its folder takes on disk.
+    private func guestList() -> [String: Any] {
+        let slots = guestSlots
+        slots.adoptRestored()
+        var list = CageProfile.profileList()
+        list["items"] = (list["items"] as? [[String: Any]] ?? []).map { row -> [String: Any] in
+            guard let id = row["id"] as? String, slots.removable(id, active: CageProfile.activeProfile) else { return row }
+            return row.merging(["removable": true, "size": slots.size(id)]) { $1 }
+        }
+        return list
+    }
+
     @objc private func returnFromNewProfile() {
         let folder = CageProfile.profileFolder(CageProfile.activeProfile)
         guard !FileManager.default.fileExists(atPath: folder.appendingPathComponent("macos-guest.json").path),
               !FileManager.default.fileExists(atPath: folder.appendingPathComponent("state/lima/mac/disk").path) else {
-            guestSidebar?.showNotice("请在虚拟机管理中切换")
+            toast?.show("请在虚拟机管理中切换", kind: .info)
             return
         }
         relaunchVMac(profile: CageProfile.defaultProfile) { [weak self] _, error in
-            if let error { self?.guestSidebar?.showNotice(error) }
+            if let error { self?.toast?.show(error, kind: .error) }
         }
     }
 
@@ -380,32 +469,69 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         #if CAGE_EMBEDDED_VM
         guard let action = sender.representedObject as? String else { return }
         if !action.withCString({ performEmbeddedUtility($0) }) {
-            guestSidebar?.showNotice("请先打开客机桌面")
+            toast?.show("请先打开客机桌面", kind: .info)
         }
         #endif
     }
 
-    // Clipboard sharing and the Mac input method default to on.
-    private static func vmacPreference(_ key: String) -> Bool {
-        UserDefaults.standard.object(forKey: key) == nil || UserDefaults.standard.bool(forKey: key)
+    private func refreshPreferenceMenu() {
+        for (preference, item) in preferenceMenuItems {
+            item.state = preference.value(in: .standard) ? .on : .off
+        }
+    }
+    /// One path for a sharing switch, whether it came from the File menu or
+    /// the sharing page: store it, apply it, and keep both in step.
+    private func setPreference(_ preference: VMacPreference, _ enabled: Bool, announce: Bool) {
+        preference.set(enabled, in: .standard)
+        refreshPreferenceMenu()
+        publishWindowVisibility()
+        webView.evaluateJavaScript("window.dispatchEvent(new Event('vmac-preferences-changed'));", completionHandler: nil)
+        guard announce else { return }
+        switch preference {
+        case .shareClipboardContent:
+            toast?.show(enabled ? "客机桌面可见时，复制的文字、图片和文件会双向同步" : "剪贴板共享已关闭", kind: .info)
+        case .hostInputMethod:
+            toast?.show(enabled ? "在客机里打字时使用 Mac 当前的输入法；客机请切换到英文（ABC）输入" : "已改用客机自己的输入法", kind: .info)
+        case .fileDrop:
+            break
+        }
     }
     @objc private func toggleGuestClipboard(_ sender: NSMenuItem) {
-        let enabled = sender.state != .on
-        sender.state = enabled ? .on : .off
-        UserDefaults.standard.set(enabled, forKey: "vmac.shareClipboardContent")
-        publishWindowVisibility()
-        guestSidebar?.showNotice(enabled ? "客机桌面可见时，复制的文字、图片和文件会双向同步" : "剪贴板共享已关闭")
+        setPreference(.shareClipboardContent, sender.state != .on, announce: true)
     }
     @objc private func toggleHostInputMethod(_ sender: NSMenuItem) {
-        let enabled = sender.state != .on
-        sender.state = enabled ? .on : .off
-        UserDefaults.standard.set(enabled, forKey: "vmac.hostInputMethod")
-        publishWindowVisibility()
-        guestSidebar?.showNotice(enabled ? "在客机里打字时使用 Mac 当前的输入法；客机请切换到英文（ABC）输入" : "已改用客机自己的输入法")
+        setPreference(.hostInputMethod, sender.state != .on, announce: true)
     }
 
+    private func installVMacToolbar() {
+        let toolbar = VMacToolbarController()
+        toolbar.onToggleControlCenter = { [weak self] in self?.toggleControlCenter() }
+        toolbar.onNavigate = { [weak self] destination in self?.selectGuestDestination(destination) }
+        #if CAGE_EMBEDDED_VM
+        toolbar.onUpload = { [weak self] in
+            if !"upload".withCString({ performEmbeddedUtility($0) }) { self?.toast?.show("请先打开客机桌面", kind: .info) }
+        }
+        #endif
+        toolbar.onFullScreen = { [weak self] in self?.window.toggleFullScreen(nil) }
+        // Restart and stop are confirmed by the workbench page, like its own buttons.
+        toolbar.onRestart = { [weak self] in self?.selectGuestDestination("restart") }
+        toolbar.onStop = { [weak self] in self?.selectGuestDestination("stop") }
+        toolbar.update(VMacStatus(name: activeProfileName(), tone: "idle", detail: "正在读取", updatePending: controllerNeedsUpdate))
+        toolbar.install(in: window)
+        vmacToolbar = toolbar
+    }
+    /// The toolbar switch: from the guest desktop to the control center and back.
+    @objc private func toggleControlCenter() {
+        switch shell.toggleAction() {
+        case .showControlCenter: showGuestControls()
+        case .showDesktop:
+            guestDesktopCommand { [weak self] _, error in
+                if let error { self?.toast?.show(error, kind: .error) }
+            }
+        case .none: break
+        }
+    }
     private func selectGuestDestination(_ destination: String) {
-        if destination == "settings" { settings(); return }
         showGuestControls()
         let quoted = String(data: try! JSONSerialization.data(withJSONObject: [destination]), encoding: .utf8)!
         webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('cage-guest-navigate', {detail: \(quoted)[0]}));", completionHandler: nil)
@@ -415,13 +541,15 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         guard nativeVMWorkbench, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer = guestContent?.layer else { return }
         let transition = CATransition()
         transition.type = .fade
-        transition.duration = 0.18
-        transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        transition.duration = 0.32
+        transition.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
         layer.add(transition, forKey: "vmac-content-fade")
     }
     private func showGuestControls() {
         if guestDesktopVisible || webView.isHidden { fadeGuestContent() }
         guestDesktopVisible = false
+        shell.controlsRequested()
+        applyShell(animated: true)
         #if CAGE_EMBEDDED_VM
         if nativeVMWorkbench { hideEmbeddedDesktop() }
         #endif
@@ -432,12 +560,16 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     }
     fileprivate func embeddedControlsRequested(_ reason: String) {
         if reason.hasPrefix("notice:") {
-            guestSidebar?.showNotice(String(reason.dropFirst("notice:".count)))
+            toast?.show(String(reason.dropFirst("notice:".count)), kind: .info)
+            return
+        }
+        if reason.hasPrefix("error:") {
+            toast?.show(String(reason.dropFirst("error:".count)), kind: .error)
             return
         }
         showGuestControls()
         if reason == "restarting" || reason == "stopped" {
-            guestSidebar?.select("lifecycle")
+            guestSidebar?.select("overview")
         }
         CageDiagnostics.record("Embedded guest view returned to controls (\(reason)) in window \(window.windowNumber)")
         guard reason == "restarting" || reason == "settings" else { return }
@@ -445,10 +577,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         webView.evaluateJavaScript("window.dispatchEvent(new Event('\(signal)'));", completionHandler: nil)
     }
     @objc private func settings() {
-        if nativeVMWorkbench {
-            showGuestControls()
-            webView.evaluateJavaScript("window.dispatchEvent(new Event('cage-guest-settings'));", completionHandler: nil)
-        } else { action("settings") }
+        if nativeVMWorkbench { selectGuestDestination("general") } else { action("settings") }
     }
     @objc private func openProject() { action("openProject") }
     @objc private func newTab() { action("newTab") }
@@ -617,6 +746,8 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
                 self.fadeGuestContent()
                 self.guestDesktopVisible = true
                 self.webView.isHidden = true
+                self.shell.desktopPresented()
+                self.applyShell(animated: true)
                 CageDiagnostics.record("Embedded guest view presented in window \(self.window.windowNumber)")
                 reply(true, nil)
             }
@@ -640,7 +771,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private func showError(_ text: String) { CageDiagnostics.record(text); loading.stringValue = text; loading.isHidden = false; retry.isHidden = false; webView.isHidden = true }
     private func applyAppearance(_ value: [String:Any]) {
         if nativeVMWorkbench {
-            window.appearance = NSAppearance(named: .aqua)
+            NSApp.appearance = NSAppearance(named: .aqua)
             window.backgroundColor = CagePalette.paper
             window.isOpaque = true
             backdrop.isHidden = true
@@ -716,9 +847,17 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             guard nativeVMWorkbench else { replyHandler(nil, "此版本不支持原生客机工作台"); return }
             guestSidebar?.select("desktop")
             guestDesktopCommand(replyHandler)
+        case "vmacPreferences":
+            guard nativeVMWorkbench else { replyHandler(nil, "需要 VMac 本机工作台"); return }
+            replyHandler(VMacPreference.all(in: .standard), nil)
+        case "vmacSetPreference":
+            guard nativeVMWorkbench, let key = body["key"] as? String, let preference = VMacPreference(rawValue: key),
+                  let value = body["value"] as? Bool else { replyHandler(nil, "无法识别这项设置"); return }
+            setPreference(preference, value, announce: false)
+            replyHandler(VMacPreference.all(in: .standard), nil)
         case "vmacProfiles":
             guard nativeVMWorkbench else { replyHandler(nil, "需要 VMac 本机工作台"); return }
-            replyHandler(CageProfile.profileList(), nil)
+            replyHandler(guestList(), nil)
         case "vmacCreateProfile":
             guard nativeVMWorkbench, let raw = body["name"] as? String else { replyHandler(nil, "虚拟机名称无效"); return }
             let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -731,7 +870,20 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             }
             profiles[id] = name
             UserDefaults.standard.set(profiles, forKey: "vmac.guestProfiles")
-            replyHandler(CageProfile.profileList(), nil)
+            replyHandler(guestList(), nil)
+        case "vmacDeleteProfile":
+            guard nativeVMWorkbench, let id = body["id"] as? String else { replyHandler(nil, "虚拟机选项无效"); return }
+            // To the Trash, not gone: Finder can put the folder back, and the list takes it in again.
+            do {
+                try guestSlots.remove(id, active: CageProfile.activeProfile) { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+                replyHandler(guestList(), nil)
+            } catch VMacGuestSlots.Failure.notRemovable {
+                replyHandler(nil, "这台虚拟机不能删除：它正在使用，或者是原有的 macOS 客机")
+            } catch VMacGuestSlots.Failure.stillClosing {
+                replyHandler(nil, "这台虚拟机还在关闭，请稍后再试")
+            } catch {
+                replyHandler(nil, "没能移到废纸篓：\(error.localizedDescription)")
+            }
         case "vmacSwitchProfile":
             guard nativeVMWorkbench, let id = body["id"] as? String,
                   CageProfile.profileExists(id), id != CageProfile.activeProfile else { replyHandler(nil, "虚拟机选项无效"); return }
@@ -751,6 +903,14 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
                 ready: body["ready"] as? Bool ?? false, busy: body["busy"] as? Bool ?? false,
                 networkLabel: body["network"] as? String ?? "", failed: body["failed"] as? Bool ?? false,
                 setup: body["setup"] as? Bool ?? false, activity: body["activity"] as? String ?? "")
+            vmacToolbar?.update(VMacStatus(name: activeProfileName(), tone: body["tone"] as? String ?? "idle",
+                                           detail: body["detail"] as? String ?? "", updatePending: controllerNeedsUpdate))
+            vmacToolbar?.update(detail: VMacStatusDetail(body: body))
+            let running = body["running"] as? Bool ?? false, ready = body["ready"] as? Bool ?? false
+            vmacToolbar?.setGuestActions(VMacGuestActions(running: running, ready: ready))
+            // A desktop that is already showing stays up for as long as the guest runs.
+            shell.guestStatusChanged(ready: running && (ready || guestDesktopVisible))
+            if shell.mode == .controlCenter && guestDesktopVisible { showGuestControls() } else { applyShell(animated: true) }
             replyHandler(true, nil)
         case "guestTrafficStatus":
             guard nativeVMWorkbench else { replyHandler(nil, "此版本不支持原生客机工作台"); return }
@@ -782,7 +942,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         case "appearance":
             guard let mode = body["mode"] as? String, ["system", "light", "dark"].contains(mode), let background = body["background"] as? String, background.range(of: "^#[0-9a-fA-F]{6}$", options: .regularExpression) != nil else { replyHandler(nil,"外观参数无效"); return }
             let value: [String:Any] = ["mode":mode,"background":background,"translucent":body["translucent"] as? Bool ?? false]
-            UserDefaults.standard.set(value, forKey: nativeVMWorkbench ? "vmac.windowAppearance" : "cage.windowAppearance")
+            if !nativeVMWorkbench { UserDefaults.standard.set(value, forKey: "cage.windowAppearance") }
             applyAppearance(value)
             replyHandler(true,nil)
         case "clipboardRead": replyHandler(NSPasteboard.general.string(forType:.string) ?? "",nil)
@@ -1028,9 +1188,10 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         webView.evaluateJavaScript("window.cageWindowVisible = \(visible ? "true" : "false"); window.dispatchEvent(new Event('cage-window-visibility'));", completionHandler: nil)
     }
     func windowDidChangeOcclusionState(_ notification: Notification) { publishWindowVisibility() }
-    func windowDidMiniaturize(_ notification: Notification) { publishWindowVisibility() }
-    func windowDidDeminiaturize(_ notification: Notification) { publishWindowVisibility() }
-    func windowWillClose(_ notification: Notification) { publishWindowVisibility(forceHidden: true) }
+    func windowDidMiniaturize(_ notification: Notification) { publishWindowVisibility(); refreshMenuKeys() }
+    func windowDidDeminiaturize(_ notification: Notification) { publishWindowVisibility(); refreshMenuKeys() }
+    func windowWillClose(_ notification: Notification) { publishWindowVisibility(forceHidden: true); refreshMenuKeys(closing: true) }
+    func windowDidBecomeKey(_ notification: Notification) { refreshMenuKeys() }
     func applicationDidHide(_ notification: Notification) { publishWindowVisibility(forceHidden: true) }
     func applicationDidUnhide(_ notification: Notification) { publishWindowVisibility() }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

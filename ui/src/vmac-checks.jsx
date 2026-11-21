@@ -18,7 +18,7 @@ const dnsKeys = [
   ...Array(5).fill("dns-surfshark"), ...Array(5).fill("dns-fastly"),
   ...Array(3).fill("dns-v4"), ...Array(3).fill("dns-v6"),
 ];
-const stamp = value => new Date(value).toLocaleString();
+const stamp = value => new Date(value).toLocaleString("zh-CN", { hour12: false });
 
 export function useVMacProtection(active, gate) {
   const [state, setState] = useState(null);

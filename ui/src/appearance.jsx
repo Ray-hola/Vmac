@@ -10,6 +10,7 @@ import {
   defaultAppearance,
   normalizeAppearance,
   themeVariables,
+  resolveVariant,
 } from "./appearance-state.mjs";
 
 const AppearanceContext = createContext(null);
@@ -37,12 +38,7 @@ export function AppearanceProvider({ children }) {
   const revision = useRef(0),
     queue = useRef(Promise.resolve()),
     current = useRef(appearance);
-  const variant =
-    appearance.mode === "system"
-      ? systemDark
-        ? "dark"
-        : "light"
-      : appearance.mode;
+  const variant = resolveVariant(appearance.mode, systemDark, Boolean(window.cageNativeVMWorkbench));
   const theme = appearance[variant + "Theme"];
   current.current = appearance;
   useEffect(() => {

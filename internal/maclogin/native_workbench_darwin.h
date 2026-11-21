@@ -10,6 +10,7 @@
 @property(nonatomic, strong) CageDesktopClipboard *clipboard;
 - (void)bringForward;
 - (void)showNotice:(NSString *)message;
+- (void)showError:(NSString *)message;
 - (BOOL)acceptDrop:(id<NSDraggingInfo>)sender perform:(BOOL)perform;
 @end
 
@@ -38,6 +39,7 @@ static BOOL plainASCII(NSString *text) {
     NSEvent *_dragEvent;
     NSUInteger _presses;
     BOOL _leftPicture;
+    NSView *_dropOutline;
 }
 // The guest's caret is invisible to the Mac; the last click in the guest is
 // the best estimate of where text goes, so the composition follows it.
@@ -64,7 +66,7 @@ static BOOL plainASCII(NSString *text) {
 // A press that leaves the picture may be a guest file drag. The guest names
 // the files it is dragging, if any, once per press.
 - (void)askGuestForDrag {
-    if (!self.virtualMachine || self.owner.pane.hidden) return;
+    if (!fileDropEnabled() || !self.virtualMachine || self.owner.pane.hidden) return;
     NSUInteger press = _presses;
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -135,13 +137,46 @@ static BOOL plainASCII(NSString *text) {
     }
     return self;
 }
+// A blue outline shows that files released here will be taken.
+- (void)showDropOutline:(BOOL)shown {
+    if (!shown && !_dropOutline) return;
+    if (!_dropOutline) {
+        _dropOutline = [[NSView alloc] initWithFrame:self.bounds];
+        _dropOutline.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        _dropOutline.wantsLayer = YES;
+        _dropOutline.layer.borderWidth = 3;
+        _dropOutline.layer.cornerRadius = 6;
+        _dropOutline.layer.borderColor = [NSColor colorWithSRGBRed:57 / 255.0 green:100 / 255.0 blue:254 / 255.0 alpha:1].CGColor;
+        _dropOutline.alphaValue = 0;
+        _dropOutline.hidden = YES;
+        [self addSubview:_dropOutline];
+    }
+    if (shown == !_dropOutline.hidden) return;
+    if (shown) _dropOutline.hidden = NO;
+    NSView *outline = _dropOutline;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.12;
+        outline.animator.alphaValue = shown ? 1 : 0;
+    } completionHandler:^{
+        if (outline.alphaValue == 0) outline.hidden = YES;
+    }];
+}
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
-    return [self.owner acceptDrop:sender perform:NO] ? NSDragOperationCopy : NSDragOperationNone;
+    BOOL accepted = [self.owner acceptDrop:sender perform:NO];
+    [self showDropOutline:accepted];
+    return accepted ? NSDragOperationCopy : NSDragOperationNone;
 }
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
     return [self draggingEntered:sender];
 }
+- (void)draggingExited:(id<NSDraggingInfo>)sender {
+    [self showDropOutline:NO];
+}
+- (void)draggingEnded:(id<NSDraggingInfo>)sender {
+    [self showDropOutline:NO];
+}
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    [self showDropOutline:NO];
     return [self.owner acceptDrop:sender perform:YES];
 }
 - (BOOL)routesThroughHostInputMethod:(NSEvent *)event {
@@ -221,7 +256,7 @@ static BOOL plainASCII(NSString *text) {
         CageDropVMView *view = weakSelf;
         if (!view) return;
         if (ok) [view sendPasteShortcut];
-        else [view.owner showNotice:@"Mac 输入法的文字没能送进客机，请重试或改用客机输入法"];
+        else [view.owner showError:@"Mac 输入法的文字没能送进客机，请重试或改用客机输入法"];
         view->_typing--;
         [view flushDeferred];
     }];
@@ -288,6 +323,12 @@ static BOOL plainASCII(NSString *text) {
         showEmbeddedControls(notice.UTF8String);
     }
 }
+// An error stays on screen until it is dismissed or replaced.
+- (void)showError:(NSString *)message {
+    if (showEmbeddedControls && message.length) {
+        showEmbeddedControls([@"error:" stringByAppendingString:message].UTF8String);
+    }
+}
 - (void)bringForward {
     self.pane.hidden = NO;
     [self.window makeKeyAndOrderFront:nil];
@@ -338,7 +379,7 @@ static BOOL plainASCII(NSString *text) {
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             self.busy = NO;
-            [self showNotice:failure ?: @""];
+            if (failure) [self showError:failure]; else [self showNotice:@""];
             if (done) done(result, failure);
             if (self.window.isKeyWindow && !self.pane.hidden) [self.window makeFirstResponder:self.view];
         });
@@ -394,7 +435,7 @@ static BOOL plainASCII(NSString *text) {
     [self runAgent:@[@"agent", @"request", @"POST", route.string, @"--content-type", @"application/octet-stream", @"--input", @"-"]
               input:nil file:handles[index] done:^(NSDictionary *value, NSString *failure) {
         if (failure) {
-            if (index) [self showNotice:[NSString stringWithFormat:@"已传输 %lu 个文件，后续停止：%@", (unsigned long)index, failure]];
+            if (index) [self showError:[NSString stringWithFormat:@"已传输 %lu 个文件，后续停止：%@", (unsigned long)index, failure]];
         } else if (index + 1 < handles.count) {
             [self uploadHandles:handles names:names batch:batch folder:folder label:label index:index + 1];
         } else if (folder) {
@@ -411,7 +452,7 @@ static BOOL plainASCII(NSString *text) {
 // Opens every file first, so a bad selection is refused before anything is sent.
 - (BOOL)openUploads:(NSArray<NSURL *> *)urls handles:(NSMutableArray<NSFileHandle *> *)handles names:(NSMutableArray<NSString *> *)names {
     if (self.busy || urls.count == 0) return NO;
-    if (urls.count > 50) { [self showNotice:@"一次最多拖入 50 个文件；更多文件请在 Mac 上复制（⌘C）后到客机粘贴（⌘V）"]; return NO; }
+    if (urls.count > 50) { [self showError:@"一次最多拖入 50 个文件；更多文件请在 Mac 上复制（⌘C）后到客机粘贴（⌘V）"]; return NO; }
     for (NSURL *url in urls) {
         if (!url.isFileURL || (url.host.length && ![url.host isEqualToString:@"localhost"])) return NO;
         int fd = open(url.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
@@ -419,7 +460,7 @@ static BOOL plainASCII(NSString *text) {
         if (fd < 0 || fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_size > (8LL << 30)) {
             BOOL folder = fd >= 0 && S_ISDIR(status.st_mode);
             if (fd >= 0) close(fd);
-            [self showNotice:folder ? @"文件夹请在 Mac 上复制（⌘C），再到客机里粘贴（⌘V）"
+            [self showError:folder ? @"文件夹请在 Mac 上复制（⌘C），再到客机里粘贴（⌘V）"
                                     : @"拖入的文件需小于或等于 8 GB；更大的文件请压缩或分卷后再传"];
             return NO;
         }
@@ -468,7 +509,7 @@ static BOOL plainASCII(NSString *text) {
     return YES;
 }
 - (BOOL)acceptDrop:(id<NSDraggingInfo>)sender perform:(BOOL)perform {
-    if (self.busy || self.pane.hidden || !self.view.virtualMachine || self.window.attachedSheet ||
+    if (!fileDropEnabled() || self.busy || self.pane.hidden || !self.view.virtualMachine || self.window.attachedSheet ||
         !(sender.draggingSourceOperationMask & NSDragOperationCopy)) return NO;
     NSPasteboard *board = sender.draggingPasteboard;
     NSDictionary *options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};
@@ -496,7 +537,7 @@ static BOOL plainASCII(NSString *text) {
             done:^(NSDictionary *result, NSString *failure) {
         if (failure) return;
         if (!self.window.isKeyWindow || board.changeCount != revision) {
-            [self showNotice:@"本机剪贴板已变化，请重试"];
+            [self showError:@"本机剪贴板已变化，请重试"];
             return;
         }
         NSDictionary *contents = result[@"body"];
