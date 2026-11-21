@@ -18,7 +18,7 @@
   --code-font-family: Menlo, Monaco, "SF Mono", ui-monospace, "PingFang SC", monospace !important;
   --card: #ffffff; --well: #f1f3f5; --nav-active: #ebeef2; --warn: #dd8629; --faint: #81858c; --caption: #adb2b8;
   --accent-text: #3964fe; --accent-soft: #e4edfd; --accent-faint: #edf3fe; --accent-border: #b7c8fe;
-  --button-hover: #5686fe; --button-active: #3964fe; --pressed: rgba(38, 49, 72, .1);
+  --button-hover: #5686fe; --button-active: #3964fe; --danger-hover: #f25a5a; --pressed: rgba(38, 49, 72, .1);
   --ok-dot: #22c55e; --warn-dot: #f59e0b; --bad-dot: #ec1313;
   --success-soft: #e6faed; --warn-soft: #fef5e7; --danger-soft: rgba(236, 19, 19, .05);
   /* Type scale: 12, 13, 14, 16, 20 and 24 at the default text size. The root

@@ -11,7 +11,7 @@ test("light variables come from the tokens", () => {
   const light = block(":root.vmac-theme {");
   for (const [name, key] of [["--paper", "page"], ["--chrome", "chrome"], ["--ink", "ink"], ["--muted", "secondary"],
     ["--accent", "accent"], ["--button", "accentFill"], ["--link", "accentText"], ["--danger", "bad"], ["--well", "fill"],
-    ["--faint", "tertiary"], ["--success", "ok"], ["--ok-dot", "ok"], ["--success-soft", "okSoft"]]) {
+    ["--faint", "tertiary"], ["--danger-hover", "badOnDark"], ["--success", "ok"], ["--ok-dot", "ok"], ["--success-soft", "okSoft"]]) {
     assert.ok(has(light, name, tokens.light[key]), `${name} should be ${tokens.light[key]}`);
   }
 });

@@ -36,6 +36,84 @@ enum VMacSidebarWidth {
     static func remembers(_ width: CGFloat) -> Bool { width >= rail && width <= widest }
 }
 
+/// The guests VMac created besides the first one. Each is a folder under
+/// `vms` named by eight hex digits, with its name kept in the preferences.
+/// The first guest is not among them: its folder is the product folder
+/// itself, with the shared account and every other guest inside, so it is
+/// never removed.
+struct VMacGuestSlots {
+    enum Failure: Error { case notRemovable, stillClosing }
+    static let namesKey = "vmac.guestProfiles"
+    /// Carries a removed guest's name inside its folder, so that a folder
+    /// put back from the Trash can be listed again.
+    static let nameFile = "removed-guest-name"
+    let root: URL
+    let defaults: UserDefaults
+
+    var names: [String: String] { defaults.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:] }
+    func folder(_ id: String) -> URL { root.appendingPathComponent("vms").appendingPathComponent(id) }
+    /// An id VMac made; nothing else may name a folder to remove.
+    static func isSlot(_ id: String) -> Bool { id.range(of: "^[a-f0-9]{8}$", options: .regularExpression) != nil }
+    /// A guest can go when VMac lists it and it is not the one in use.
+    func removable(_ id: String, active: String) -> Bool { Self.isSlot(id) && names[id] != nil && id != active }
+    /// Whether a controller still holds the guest's lock: a VMac that was
+    /// showing it and has not finished closing.
+    func busy(_ id: String) -> Bool {
+        let descriptor = open(folder(id).appendingPathComponent("control.lock").path, O_RDWR)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else { return true }
+        flock(descriptor, LOCK_UN)
+        return false
+    }
+    /// What the guest's folder takes on disk. A disk image counts for what
+    /// it has written, not for its nominal size.
+    func size(_ id: String) -> Int64 {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .totalFileAllocatedSizeKey]
+        guard let found = FileManager.default.enumerator(at: folder(id), includingPropertiesForKeys: Array(keys)) else { return 0 }
+        var total: Int64 = 0
+        for case let file as URL in found {
+            guard let values = try? file.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
+            total += Int64(values.totalFileAllocatedSize ?? 0)
+        }
+        return total
+    }
+    /// Hands the guest's folder to `trash` and forgets its name. A guest that
+    /// was never opened has no folder, and only its name goes.
+    func remove(_ id: String, active: String, trash: (URL) throws -> Void) throws {
+        guard removable(id, active: active) else { throw Failure.notRemovable }
+        guard !busy(id) else { throw Failure.stillClosing }
+        var names = names
+        let folder = folder(id), marker = folder.appendingPathComponent(Self.nameFile)
+        if FileManager.default.fileExists(atPath: folder.path) {
+            try Data((names[id] ?? "").utf8).write(to: marker, options: .atomic)
+            do { try trash(folder) } catch {
+                try? FileManager.default.removeItem(at: marker)
+                throw error
+            }
+        }
+        names[id] = nil
+        defaults.set(names, forKey: Self.namesKey)
+    }
+    /// Lists again every guest whose folder has come back from the Trash. A
+    /// name taken in the meantime gets a number.
+    func adoptRestored() {
+        guard let found = try? FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("vms"), includingPropertiesForKeys: nil) else { return }
+        var names = names, changed = false
+        for folder in found where Self.isSlot(folder.lastPathComponent) && names[folder.lastPathComponent] == nil {
+            let marker = folder.appendingPathComponent(Self.nameFile)
+            guard let data = try? Data(contentsOf: marker), let saved = String(data: data, encoding: .utf8),
+                  !saved.isEmpty, saved.count <= 36 else { continue }
+            var name = saved, number = 2
+            while names.values.contains(name) { name = "\(saved) \(number)"; number += 1 }
+            names[folder.lastPathComponent] = name
+            changed = true
+            try? FileManager.default.removeItem(at: marker)
+        }
+        if changed { defaults.set(names, forKey: Self.namesKey) }
+    }
+}
+
 enum VMacTone: String { case busy, ok, warn, bad, idle }
 
 /// What the toolbar's status pill shows. With the window title hidden, the

@@ -88,6 +88,60 @@ enum VMacShellTests {
         precondition(VMacSidebarWidth.widest(in: 1280) == 260 && VMacSidebarWidth.widest(in: 820) == 220, "the page keeps 600 for itself")
         precondition(VMacSidebarWidth.remembers(64) && VMacSidebarWidth.remembers(260))
         precondition(!VMacSidebarWidth.remembers(63.5) && !VMacSidebarWidth.remembers(261), "a width the divider cannot reach is not saved")
-        print("VMac shell state, status, toast, full screen, menu key and sidebar width checks passed")
+        // Guests besides the first one can be moved to the Trash, and put back.
+        let files = FileManager.default
+        let home = files.temporaryDirectory.appendingPathComponent("vmac-slots-\(UUID().uuidString)")
+        let bin = home.appendingPathComponent("trash")
+        let slotSuite = "vmac.tests.slots.\(UUID().uuidString)"
+        let slotStore = UserDefaults(suiteName: slotSuite)!
+        defer { try? files.removeItem(at: home); slotStore.removePersistentDomain(forName: slotSuite) }
+        let slots = VMacGuestSlots(root: home.appendingPathComponent(".vmac"), defaults: slotStore)
+        slotStore.set(["00af2908": "测试客机", "11bb2233": "未启动过"], forKey: VMacGuestSlots.namesKey)
+        let folder = slots.folder("00af2908")
+        try! files.createDirectory(at: folder.appendingPathComponent("state"), withIntermediateDirectories: true)
+        try! Data(count: 4096).write(to: folder.appendingPathComponent("state/disk"))
+        try! files.createDirectory(at: bin, withIntermediateDirectories: true)
+        let toBin: (URL) throws -> Void = { try files.moveItem(at: $0, to: bin.appendingPathComponent($0.lastPathComponent)) }
+        struct Refused: Error {}
+
+        precondition(!slots.removable("default", active: "00af2908"), "the first guest holds the shared account and the other guests")
+        precondition(!slots.removable("00af2908", active: "00af2908"), "the guest in use stays")
+        precondition(!slots.removable("../../etc", active: "default") && !slots.removable("00AF2908", active: "default"), "only an id VMac made can name a folder to remove")
+        precondition(!slots.removable("deadbeef", active: "default"), "a guest VMac does not list is not removed")
+        precondition(slots.removable("00af2908", active: "default") && slots.removable("11bb2233", active: "default"))
+        precondition(slots.size("00af2908") >= 4096 && slots.size("11bb2233") == 0)
+
+        do { try slots.remove("00af2908", active: "00af2908", trash: toBin); preconditionFailure("the guest in use was removed") } catch {}
+        do { try slots.remove("00af2908", active: "default", trash: { _ in throw Refused() }); preconditionFailure("a refused move went unreported") } catch {}
+        precondition(slots.names["00af2908"] == "测试客机" && files.fileExists(atPath: folder.appendingPathComponent("state/disk").path), "a failed move leaves the guest listed and whole")
+        precondition(!files.fileExists(atPath: folder.appendingPathComponent(VMacGuestSlots.nameFile).path))
+
+        // A controller that has not finished closing still holds the guest's lock.
+        let lock = folder.appendingPathComponent("control.lock")
+        files.createFile(atPath: lock.path, contents: nil)
+        let held = open(lock.path, O_RDWR)
+        precondition(held >= 0 && flock(held, LOCK_EX | LOCK_NB) == 0 && slots.busy("00af2908"))
+        do { try slots.remove("00af2908", active: "default", trash: toBin); preconditionFailure("a guest still closing was removed") } catch {}
+        close(held)
+        precondition(!slots.busy("00af2908") && !slots.busy("11bb2233"))
+
+        try! slots.remove("00af2908", active: "default", trash: toBin)
+        precondition(slots.names["00af2908"] == nil && !files.fileExists(atPath: folder.path))
+        precondition(files.fileExists(atPath: bin.appendingPathComponent("00af2908/state/disk").path), "the guest went to the Trash whole")
+        // A guest that was never opened has no folder; only its name goes.
+        try! slots.remove("11bb2233", active: "default", trash: toBin)
+        precondition(slots.names.isEmpty)
+
+        // Put back from the Trash, the guest is listed again; a name taken meanwhile gets a number.
+        slotStore.set(["22cc3344": "测试客机"], forKey: VMacGuestSlots.namesKey)
+        try! files.moveItem(at: bin.appendingPathComponent("00af2908"), to: folder)
+        slots.adoptRestored()
+        precondition(slots.names["00af2908"] == "测试客机 2" && slots.names["22cc3344"] == "测试客机")
+        precondition(!files.fileExists(atPath: folder.appendingPathComponent(VMacGuestSlots.nameFile).path))
+        // A folder VMac did not remove is left alone.
+        try! files.createDirectory(at: slots.folder("33dd4455"), withIntermediateDirectories: true)
+        slots.adoptRestored()
+        precondition(slots.names["33dd4455"] == nil && slots.names.count == 2)
+        print("VMac shell state, status, toast, full screen, menu key, sidebar width and guest removal checks passed")
     }
 }

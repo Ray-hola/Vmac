@@ -439,6 +439,20 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         }
     }
 
+    private var guestSlots: VMacGuestSlots { VMacGuestSlots(root: CageProfile.profileRoot, defaults: .standard) }
+    /// The guests for the management page. A guest that can be removed says
+    /// so and reports what its folder takes on disk.
+    private func guestList() -> [String: Any] {
+        let slots = guestSlots
+        slots.adoptRestored()
+        var list = CageProfile.profileList()
+        list["items"] = (list["items"] as? [[String: Any]] ?? []).map { row -> [String: Any] in
+            guard let id = row["id"] as? String, slots.removable(id, active: CageProfile.activeProfile) else { return row }
+            return row.merging(["removable": true, "size": slots.size(id)]) { $1 }
+        }
+        return list
+    }
+
     @objc private func returnFromNewProfile() {
         let folder = CageProfile.profileFolder(CageProfile.activeProfile)
         guard !FileManager.default.fileExists(atPath: folder.appendingPathComponent("macos-guest.json").path),
@@ -843,7 +857,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             replyHandler(VMacPreference.all(in: .standard), nil)
         case "vmacProfiles":
             guard nativeVMWorkbench else { replyHandler(nil, "需要 VMac 本机工作台"); return }
-            replyHandler(CageProfile.profileList(), nil)
+            replyHandler(guestList(), nil)
         case "vmacCreateProfile":
             guard nativeVMWorkbench, let raw = body["name"] as? String else { replyHandler(nil, "虚拟机名称无效"); return }
             let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -856,7 +870,20 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
             }
             profiles[id] = name
             UserDefaults.standard.set(profiles, forKey: "vmac.guestProfiles")
-            replyHandler(CageProfile.profileList(), nil)
+            replyHandler(guestList(), nil)
+        case "vmacDeleteProfile":
+            guard nativeVMWorkbench, let id = body["id"] as? String else { replyHandler(nil, "虚拟机选项无效"); return }
+            // To the Trash, not gone: Finder can put the folder back, and the list takes it in again.
+            do {
+                try guestSlots.remove(id, active: CageProfile.activeProfile) { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+                replyHandler(guestList(), nil)
+            } catch VMacGuestSlots.Failure.notRemovable {
+                replyHandler(nil, "这台虚拟机不能删除：它正在使用，或者是原有的 macOS 客机")
+            } catch VMacGuestSlots.Failure.stillClosing {
+                replyHandler(nil, "这台虚拟机还在关闭，请稍后再试")
+            } catch {
+                replyHandler(nil, "没能移到废纸篓：\(error.localizedDescription)")
+            }
         case "vmacSwitchProfile":
             guard nativeVMWorkbench, let id = body["id"] as? String,
                   CageProfile.profileExists(id), id != CageProfile.activeProfile else { replyHandler(nil, "虚拟机选项无效"); return }

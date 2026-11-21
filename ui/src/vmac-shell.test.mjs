@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { autoStartEnabled, bootView, opensDesktop, setAutoStart, shellStatus, shouldAutoStart, statusDetail } from "./vmac-shell.mjs";
+import { autoStartEnabled, bootView, diskSize, opensDesktop, removalNotice, setAutoStart, shellStatus, shouldAutoStart, statusDetail } from "./vmac-shell.mjs";
 
 const now = Date.parse("2026-11-20T12:00:00Z");
 const later = "2026-11-20T12:10:00Z";
@@ -114,4 +114,28 @@ test("the popover says so when there is no exit information", () => {
 test("an unknown disk size is a dash", () => {
   assert.equal(statusDetail(gate("open"), null, now).disk, "—");
   assert.equal(statusDetail(gate("open"), { bytes: 96.5 * 2 ** 30 }, now).disk, "96.5 GiB");
+});
+
+test("a disk size reads in the unit that fits", () => {
+  assert.equal(diskSize(41 * 2 ** 30), "41 GB");
+  assert.equal(diskSize(38.2 * 2 ** 30), "38.2 GB");
+  assert.equal(diskSize(5.6 * 2 ** 20), "5.6 MB");
+  assert.equal(diskSize(900), "不到 1 MB");
+  assert.equal(diskSize(0), "");
+  assert.equal(diskSize(undefined), "");
+});
+test("removing a guest says what goes to the Trash and that it can come back", () => {
+  const installed = removalNotice({ id: "00af2908", name: "测试客机", installed: true, size: 41 * 2 ** 30 });
+  assert.equal(installed.title, "删除「测试客机」？");
+  assert.match(installed.body, /磁盘和数据（41 GB）会移到废纸篓/);
+  assert.match(installed.body, /放回原处/);
+  assert.equal(installed.confirm, "移到废纸篓");
+  assert.equal(installed.danger, true);
+  const waiting = removalNotice({ id: "11bb2233", name: "666", installed: false, size: 5.6 * 2 ** 20 });
+  assert.match(waiting.body, /还没有安装 macOS/);
+  assert.match(waiting.body, /5\.6 MB/);
+  const unopened = removalNotice({ id: "22cc3344", name: "新客机", installed: false, size: 0 });
+  assert.match(unopened.body, /还没有打开过/);
+  assert.doesNotMatch(unopened.body, /废纸篓/);
+  assert.equal(unopened.confirm, "删除");
 });

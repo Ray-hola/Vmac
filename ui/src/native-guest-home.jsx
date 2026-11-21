@@ -395,7 +395,7 @@ export function NativeGuestHome({ setup = null }) {
         onDirtyChange={dirty => { settingsDirty.current[id] = dirty; }} />)}
     </div>}
     {dialog && <Modal title={dialog.title} onClose={() => resolve(false)}
-      footer={<><button onClick={() => resolve(false)}>取消</button><button className="primary" onClick={() => resolve(true)}>{dialog.confirm}</button></>}>
+      footer={<><button onClick={() => resolve(false)}>取消</button><button className={dialog.danger ? "primary danger" : "primary"} onClick={() => resolve(true)}>{dialog.confirm}</button></>}>
       <div className="modal-body">{dialog.body}</div>
     </Modal>}
   </main>;
