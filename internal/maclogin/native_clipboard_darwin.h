@@ -1,3 +1,6 @@
+#include "clipboard_baseline.h"
+#include "drag_out_summary.h"
+
 static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) {
     if ((automatic && ([board.types containsObject:@"org.nspasteboard.ConcealedType"] ||
                        [board.types containsObject:@"org.nspasteboard.TransientType"])) ||
@@ -22,6 +25,11 @@ static NSDictionary *transferableClipboard(NSPasteboard *board, BOOL automatic) 
 static void clipboardNotice(NSString *message) {
     if (!showEmbeddedControls || !message.length) return;
     showEmbeddedControls([@"notice:" stringByAppendingString:message].UTF8String);
+}
+// A failure stays on screen until it is dismissed or replaced.
+static void clipboardError(NSString *message) {
+    if (!showEmbeddedControls || !message.length) return;
+    showEmbeddedControls([@"error:" stringByAppendingString:message].UTF8String);
 }
 
 static NSArray<NSURL *> *hostClipboardFiles(NSPasteboard *board) {
@@ -86,13 +94,14 @@ static NSDictionary *clipboardCacheCommand(NSString *action, NSString *cache) {
     return text ? clipboardFilesCommand(@[@"cache", text], NULL) : nil;
 }
 
-// Both default to on; the File menu stores an explicit choice.
+// All default to on; the File menu and the sharing page store an explicit choice.
 static BOOL vmacPreference(NSString *key) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     return [defaults objectForKey:key] == nil || [defaults boolForKey:key];
 }
 static BOOL clipboardSharingEnabled(void) { return vmacPreference(@"vmac.shareClipboardContent"); }
 static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInputMethod"); }
+static BOOL fileDropEnabled(void) { return vmacPreference(@"vmac.fileDrop"); }
 
 @interface CageDesktopClipboard : NSObject
 @property(nonatomic, readonly) BOOL canTypeText;
@@ -107,6 +116,7 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
     NSFileHandle *_writer;
     dispatch_queue_t _outgoing;
     NSInteger _hostRevision;
+    BOOL _connectedBefore;
     NSInteger _serial;
     NSInteger _pendingSerial;
     BOOL _connected;
@@ -210,7 +220,8 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
         _connected = YES;
         _filesEnabled = [hello[@"subscribe"] boolValue];
         _typingEnabled = [hello[@"type_text"] boolValue];
-        _hostRevision = board.changeCount;
+        _hostRevision = cageClipboardBaseline(_connectedBefore, _hostRevision, board.changeCount);
+        _connectedBefore = YES;
         _subscribed = clipboardSharingEnabled();
         if (_subscribed) [self send:@{@"subscribe":@YES}];
         return;
@@ -328,7 +339,7 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
             NSString *selection = [result[@"files"] isKindOfClass:NSString.class] ? result[@"files"] : nil;
             if (!client) return;
             client->_transferring = NO;
-            if (!selection) { clipboardNotice(failure); return; }
+            if (!selection) { clipboardError(failure); return; }
             if (!client->_connected || NSPasteboard.generalPasteboard.changeCount != revision) {
                 dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
                     clipboardFilesCommand(@[@"--connection", @"local", @"release", selection], NULL);
@@ -356,7 +367,7 @@ static BOOL hostInputMethodEnabled(void) { return vmacPreference(@"vmac.hostInpu
             NSString *cache = [result[@"cache_id"] isKindOfClass:NSString.class] ? result[@"cache_id"] : @"";
             if (!client) return;
             client->_transferring = NO;
-            if (!paths.count) { clipboardNotice(failure); return; }
+            if (!paths.count) { clipboardError(failure); return; }
             NSPasteboard *board = NSPasteboard.generalPasteboard;
             NSMutableArray<NSURL *> *urls = [NSMutableArray arrayWithCapacity:paths.count];
             for (NSString *path in paths) if ([path isKindOfClass:NSString.class]) [urls addObject:[NSURL fileURLWithPath:path]];
@@ -459,6 +470,7 @@ static NSURL *unusedFileURL(NSURL *url) {
     NSString *_cache;
     NSString *_failure;
     NSUInteger _remaining;
+    NSUInteger _failed;
     BOOL _fetched;
     BOOL _released;
 }
@@ -540,10 +552,19 @@ static NSURL *unusedFileURL(NSURL *url) {
     } else {
         [NSFileManager.defaultManager moveItemAtURL:[NSURL fileURLWithPath:source] toURL:unusedFileURL(url) error:&error];
     }
+    if (error) _failed++;
     if (--_remaining == 0 && _cache.length) clipboardCacheCommand(@"release", _cache);
-    NSString *notice = error ? (_failure ?: @"有文件没能从客机拷出，请重试") :
-        !_remaining ? [NSString stringWithFormat:@"已从客机拷出 %lu 项", (unsigned long)_names.count] : nil;
-    if (notice) dispatch_async(dispatch_get_main_queue(), ^{ clipboardNotice(notice); });
+    // A failed item is reported at once, in case nothing asks for the rest.
+    // The closing notice counts the failures, so that an item which arrives
+    // later cannot replace the error with a success.
+    BOOL failed = error != nil;
+    NSString *notice = error ? (_failure ?: @"有文件没能从客机拷出，请重试") : nil;
+    if (!_remaining) {
+        failed = cageDragOutSummary(_names.count, _failed) != 0;
+        notice = failed ? (_failure ?: [NSString stringWithFormat:@"有 %lu 项没能从客机拷出", (unsigned long)_failed])
+                        : [NSString stringWithFormat:@"已从客机拷出 %lu 项", (unsigned long)_names.count];
+    }
+    if (notice) dispatch_async(dispatch_get_main_queue(), ^{ if (failed) clipboardError(notice); else clipboardNotice(notice); });
     completionHandler(error);
 }
 @end

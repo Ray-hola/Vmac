@@ -1,50 +1,39 @@
 import React, { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { CircleAlert } from "lucide-react";
 
 import { api, native } from "./api";
 import { useAccount } from "./account";
 import { requestMacOSRecovery } from "./macos-recovery";
 import { Modal } from "./modal";
 import { networkState } from "./safety-state.mjs";
+import { autoStartEnabled, opensDesktop, shellStatus, shouldAutoStart, statusDetail } from "./vmac-shell.mjs";
+import { anchorFor, embeddedSections, leavePrompts, pageFor, pages, settingsDiffer, settingsNeedReload } from "./vmac-pages.mjs";
 import { SettingsPanel } from "./settings";
 import { ProxySettings } from "./proxy-settings";
+import { GeneralPage } from "./vmac-general";
+import { SharingPage } from "./vmac-sharing";
 import { SpaceManagement } from "./space-management";
 import { DiskCapacity, GuestInputSources, GuestLoginDetails, GuestTimezone, VMProfiles } from "./vmac-management";
-import { ChecksPage, protectionText, protectionTone, useVMacProtection } from "./vmac-checks";
-import { GuestOverview, guestPhase } from "./vmac-overview";
-import { PageHeader, StatusChip } from "./vmac-ui";
+import { ChecksPage, useVMacProtection } from "./vmac-checks";
+import { GuestOverview } from "./vmac-overview";
+import { PageHeader } from "./vmac-ui";
+import "./vmac-theme.css";
 import "./native-guest-home.css";
-
-const titles = {
-  lifecycle: "客机桌面",
-  desktop: "客机桌面",
-  space: "存储空间",
-  profiles: "虚拟机切换",
-  login: "客机账户",
-  timezone: "时区",
-  input: "输入法",
-  proxy: "代理管理",
-  checks: "环境检测",
-};
-const subtitles = {
-  space: "调整磁盘容量和清理 macOS 客机。",
-  proxy: "选择出口节点、管理订阅，所有客机共用这套代理。",
-  checks: "核对隔离报告、网关保护和 Claude 站点连通。",
-};
-const phaseChip = {
-  busy: ["busy", "处理中"], ready: ["ok", "已就绪"], connecting: ["busy", "连接中"], failed: ["bad", "未完成"], stopped: ["idle", "已停止"],
-};
 
 export function NativeGuestHome({ setup = null }) {
   const { account } = useAccount();
   useEffect(() => { document.documentElement.classList.add("vmac-theme"); }, []);
   const [status, setStatus] = useState(null);
-  const [page, setPage] = useState("lifecycle");
+  const [page, setPage] = useState("overview");
   const [checksTab, setChecksTab] = useState("isolation");
   const [settings, setSettings] = useState(null);
-  const [section, setSection] = useState("");
+  const [settingsVersion, setSettingsVersion] = useState(0);
+  const loadedSettings = useRef(null);
+  const pendingAnchor = useRef(null);
   const [profile, setProfile] = useState("");
   const [disk, setDisk] = useState(null);
-  const [scrolled, setScrolled] = useState(false);
+  const diskSize = useRef(null);
   const protection = useVMacProtection(page === "proxy" || page === "checks", status?.safety?.gate);
   const [error, setError] = useState("");
   const [request, setRequest] = useState(false);
@@ -56,10 +45,13 @@ export function NativeGuestHome({ setup = null }) {
   const opened = useRef(false);
   const launchClaude = useRef(true);
   const latest = useRef(null);
-  const currentPage = useRef("lifecycle");
+  const currentPage = useRef("overview");
+  // Which embedded settings sections hold edits that are not saved yet.
+  const settingsDirty = useRef({});
   const proxyDirty = useRef(false);
   const pollNow = useRef(null);
   const lifecycleAction = useRef(null);
+  const stopAction = useRef(null);
 
   function confirm(options) {
     return new Promise(resolve => setDialog({ ...options, resolve }));
@@ -69,27 +61,57 @@ export function NativeGuestHome({ setup = null }) {
     setDialog(null);
   }
   function choosePage(value) {
+    if (value !== currentPage.current) settingsDirty.current = {};
+    if (settingsNeedReload({ entering: value, leaving: currentPage.current })) void refreshSettings();
+    const changed = value !== currentPage.current;
     currentPage.current = value;
-    setPage(value);
+    // One page gives way to the next with a cross-fade where the browser can do it.
+    if (changed && document.startViewTransition) document.startViewTransition(() => flushSync(() => setPage(value)));
+    else setPage(value);
     // Keep the native sidebar selection in step with in-page navigation.
     void publishNavigation(latest.current).catch(() => {});
   }
-  async function openSettings(value = "network") {
+  // The old settings sections live inside the pages now; their names still
+  // work, and one that sits further down its page is scrolled into view.
+  function openSettings(value = "network") {
+    void navigate(pageFor(value), undefined, anchorFor(value));
+  }
+  // The embedded forms are rebuilt only when the settings really changed, so
+  // a routine re-read leaves a form that is being edited alone.
+  async function refreshSettings() {
     try {
-      setSettings(await api("/settings"));
-      setSection(value);
+      const next = await api("/settings");
+      if (!settingsDiffer(loadedSettings.current, next)) return;
+      loadedSettings.current = next;
+      setSettings(next);
+      setSettingsVersion(version => version + 1);
     } catch (failure) { setError(failure.message); }
+  }
+  useEffect(() => { void refreshSettings(); }, []);
+  // Asks before unsaved work on the current page is dropped.
+  async function confirmLeaving(target) {
+    const prompts = leavePrompts({ from: currentPage.current, to: target,
+      settingsDirty: Object.values(settingsDirty.current).some(Boolean), proxyDirty: proxyDirty.current });
+    for (const prompt of prompts) {
+      const question = prompt === "settings"
+        ? { title: "放弃尚未保存的修改？", body: "当前环境不会改变。离开后会丢弃这次表单修改。", confirm: "放弃修改" }
+        : { title: "离开代理线路？", body: "代理更改尚未应用。", confirm: "离开页面" };
+      if (!await confirm(question)) return false;
+      if (prompt === "proxy") proxyDirty.current = false;
+    }
+    return true;
   }
   async function openDesktop(destination = "desktop", shouldLaunchClaude = true) {
     if (opened.current) return;
     opened.current = true;
-    automatic.current = false;
-    setError("");
-    setRequest(true);
     try {
+      // Showing the desktop returns the control center to the overview.
+      if (!await confirmLeaving("overview")) return;
+      automatic.current = false;
+      setError("");
+      setRequest(true);
       await native("showGuestDesktop", { destination });
-      choosePage(destination);
-      setSection("");
+      choosePage("overview");
       if (destination === "desktop" && shouldLaunchClaude && launchClaude.current) {
         launchClaude.current = false;
         void api("/macos/claude/window", { action: "launch" }).catch(() => {});
@@ -97,20 +119,23 @@ export function NativeGuestHome({ setup = null }) {
     } catch (failure) { setError(failure.message); }
     finally { opened.current = false; setRequest(false); }
   }
-  async function navigate(destination, checksSection) {
-    if (!Object.hasOwn(titles, destination) || opened.current) return;
-    if (proxyDirty.current && destination !== "proxy") {
-      if (!await confirm({ title: "离开代理管理？", body: "代理更改尚未应用。", confirm: "离开页面" })) {
-        await publishNavigation(latest.current);
-        return;
-      }
-      proxyDirty.current = false;
+  async function navigate(destination, checksSection, anchor) {
+    if (opened.current) return;
+    const target = pageFor(destination);
+    if (!await confirmLeaving(target)) {
+      // The native sidebar already shows the row that was clicked: put it back.
+      await publishNavigation(latest.current);
+      return;
     }
     automatic.current = false;
     setError("");
-    if (destination === "checks" && checksSection) setChecksTab(checksSection);
-    choosePage(destination);
-    if (destination === "desktop" && !setupActive.current && latest.current?.ready) await openDesktop(destination);
+    if (target === "checks" && checksSection) setChecksTab(checksSection);
+    // A jump within the page scrolls at once; one to another page scrolls
+    // when that page is on screen.
+    if (anchor && target === currentPage.current) followAnchor(anchor);
+    else pendingAnchor.current = anchor || null;
+    choosePage(target);
+    if (opensDesktop(destination, { ready: latest.current?.ready, setup: setupActive.current })) await openDesktop();
   }
   async function publishNavigation(next) {
     if (!next) return;
@@ -121,7 +146,8 @@ export function NativeGuestHome({ setup = null }) {
       busy: Boolean(next.job?.running),
       failed: Boolean(!next.job?.running && next.job?.error),
       activity: next.job?.running ? next.job.kind || "" : "",
-      network: networkState(next).label,
+      ...statusDetail(next, diskSize.current),
+      ...shellStatus(next, { setup: setupActive.current }),
       destination: currentPage.current,
     });
   }
@@ -131,6 +157,7 @@ export function NativeGuestHome({ setup = null }) {
     let wasRunning = false;
     let acknowledged = false;
     let lastNavigation = "";
+    let jobWasRunning = false;
     async function poll() {
       clearTimeout(timer);
       try {
@@ -141,14 +168,21 @@ export function NativeGuestHome({ setup = null }) {
         if (!acknowledged) {
           acknowledged = true;
           void native("workbenchReady").catch(() => {});
+          // Opening VMac brings the guest up, like opening a laptop.
+          if (shouldAutoStart(next, { enabled: autoStartEnabled(localStorage), installed: next.guest_system === "macos", setup: setupActive.current })) {
+            void lifecycleAction.current?.("start");
+          }
         }
         if (restartPending.current && (!next.vm_running || (next.job?.kind === "restart" && next.job.running))) restartPending.current = false;
         if (wasRunning && !next.vm_running) {
-          choosePage("lifecycle");
+          choosePage("overview");
           void native("showGuestControls").catch(() => {});
         }
         wasRunning = next.vm_running;
-        const key = JSON.stringify([setupActive.current, next.vm_running, next.ready, next.job?.running, next.job?.error, networkState(next).label, currentPage.current]);
+        const jobRunning = Boolean(next.job?.running);
+        if (settingsNeedReload({ entering: currentPage.current, leaving: currentPage.current, jobWasRunning, jobRunning })) void refreshSettings();
+        jobWasRunning = jobRunning;
+        const key = JSON.stringify([setupActive.current, next.vm_running, next.ready, next.job?.running, next.job?.error, statusDetail(next, diskSize.current), shellStatus(next, { setup: setupActive.current }).detail, currentPage.current]);
         if (key !== lastNavigation) {
           lastNavigation = key;
           void publishNavigation(next).catch(() => {});
@@ -161,17 +195,16 @@ export function NativeGuestHome({ setup = null }) {
       }
     }
     function settingsRequested() {
-      automatic.current = false;
-      void openSettings();
+      void navigate("general");
     }
     function restartRequested() {
       restartPending.current = true;
       automatic.current = true;
-      choosePage("lifecycle");
-      setSection("");
+      choosePage("overview");
     }
     function navigationRequested(event) {
       if (event.detail === "start" || event.detail === "restart") void lifecycleAction.current?.(event.detail);
+      else if (event.detail === "stop") void stopAction.current?.();
       else void navigate(event.detail);
     }
     window.addEventListener("cage-guest-settings", settingsRequested);
@@ -240,20 +273,22 @@ export function NativeGuestHome({ setup = null }) {
     finally { setRequest(false); }
   }
   lifecycleAction.current = async action => {
-    if (setupActive.current) { choosePage("desktop"); return; }
+    if (setupActive.current) { choosePage("overview"); return; }
     if (!latest.current || request || latest.current.job?.running) return;
     setError("");
     if (action === "start") {
-      choosePage("lifecycle");
+      if (!await confirmLeaving("overview")) return;
+      choosePage("overview");
       await start();
       return;
     }
     if (!latest.current.vm_running) return;
+    if (!await confirmLeaving("overview")) return;
     setRequest(true);
     try {
       const accepted = await requestMacOSRecovery("restart", confirm);
       if (!accepted) return;
-      choosePage("lifecycle");
+      choosePage("overview");
       restartPending.current = true;
       automatic.current = true;
       setStatus(current => ({ ...current, job: { ...accepted, running: true } }));
@@ -261,8 +296,11 @@ export function NativeGuestHome({ setup = null }) {
     } catch (failure) { setError(failure.message); }
     finally { setRequest(false); }
   };
+  stopAction.current = stop;
   async function stop() {
     if (!latest.current?.vm_running || request || latest.current.job?.running) return;
+    // A stopped guest brings the overview back, like a restart does.
+    if (!await confirmLeaving("overview")) return;
     if (!await confirm({ title: "停止 macOS 客机？", body: "请先保存客机中的工作。停止后客机文件和登录资料会保留，可随时再次启动。", confirm: "停止客机" })) return;
     setError("");
     setRequest(true);
@@ -279,55 +317,85 @@ export function NativeGuestHome({ setup = null }) {
       setProfile(value?.items?.find(item => item.id === value.active)?.name || "");
     }).catch(() => {});
   }, []);
-  const lifecycle = ["lifecycle", "desktop"].includes(page);
+  const lifecycle = page === "overview";
   const installed = status?.guest_system === "macos";
   useEffect(() => {
-    if (!lifecycle || !installed || disk) return;
+    if (!installed || disk) return;
     api("/macos/disk").then(setDisk).catch(() => {});
-  }, [lifecycle, installed, Boolean(disk)]);
+  }, [installed, Boolean(disk)]);
+  // The toolbar's status popover shows the disk size too.
+  useEffect(() => {
+    diskSize.current = disk;
+    void publishNavigation(latest.current).catch(() => {});
+  }, [disk]);
   const network = status && networkState(status);
-  const phase = status ? guestPhase(status, request) : "stopped";
   const issue = error || (!status?.job?.running && (status?.job?.error || (status?.vm_running && status?.environment_update_error)));
   const showSetup = Boolean(setup && lifecycle);
-  const pageKey = lifecycle ? "desktop" : page;
+  const pageKey = page;
   const scroller = useRef(null);
-  useEffect(() => { scroller.current?.scrollTo({ top: 0 }); }, [pageKey]);
-  const chip = !status ? null
-    : lifecycle ? <StatusChip tone={phaseChip[phase][0]}>{phaseChip[phase][1]}</StatusChip>
-    : page === "checks" ? <StatusChip tone={protectionTone[protection.state] || "idle"}>{protectionText(protection)}</StatusChip>
-    : page === "proxy" ? null
-    : <StatusChip tone={phaseChip[phase][0]}>{profile || "macOS 客机"} · {phaseChip[phase][1]}</StatusChip>;
-  return <main ref={scroller} className={showSetup ? "native-guest-home native-setup-home" : "native-guest-home"}
-    onScroll={event => setScrolled(event.currentTarget.scrollTop > 4)} data-scrolled={scrolled || undefined}>
-    {!showSetup && <PageHeader title={titles[page]} aside={chip}
-      subtitle={lifecycle ? (profile ? `${profile} · 原生客机画面与运行状态` : "原生客机画面与运行状态") : subtitles[page]} />}
+  // Scrolls a form into view and keeps it there: what sits above it may still
+  // be loading and push it down, until the page settles or the user takes over.
+  function followAnchor(id) {
+    const view = scroller.current;
+    if (!view || !document.getElementById(id)) return undefined;
+    const follow = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
+    follow();
+    const observer = new ResizeObserver(follow);
+    const content = view.querySelector(".vm-page");
+    if (content) observer.observe(content);
+    const release = () => {
+      observer.disconnect();
+      clearTimeout(timer);
+      for (const kind of ["wheel", "touchstart", "keydown", "mousedown"]) view.removeEventListener(kind, release);
+    };
+    const timer = setTimeout(release, 3000);
+    for (const kind of ["wheel", "touchstart", "keydown", "mousedown"]) view.addEventListener(kind, release, { passive: true });
+    return release;
+  }
+  // A page opens at its top, unless the jump named a form further down.
+  useEffect(() => {
+    const id = pendingAnchor.current;
+    pendingAnchor.current = null;
+    const release = id && followAnchor(id);
+    if (!release) scroller.current?.scrollTo({ top: 0 });
+    return release || undefined;
+  }, [pageKey]);
+  return <main ref={scroller} className={showSetup ? "native-guest-home native-setup-home" : "native-guest-home"}>
+    {/* The overview is about the guest, which names itself in the middle of the page. */}
+    {!showSetup && !lifecycle && <PageHeader title={pages[page].title} subtitle={pages[page].subtitle} />}
     {setup && <div className="native-setup-content" hidden={!showSetup}>{setup}</div>}
-    {!showSetup && issue && <div className="vm-banner" role="alert"><span>{issue}</span><button onClick={() => { setError(""); void pollNow.current?.(); }}>重新检查</button></div>}
+    {!showSetup && issue && <div className="vm-banner" role="alert"><CircleAlert size={17} aria-hidden="true" /><span>{issue}</span><button onClick={() => { setError(""); void pollNow.current?.(); void refreshSettings(); }}>重新检查</button></div>}
     {!showSetup && <div className="vm-page" key={pageKey}>
       {!status ? <div className="vm-skeleton" role="status" aria-label="正在读取客机状态"><span /><span /><span /></div> :
-      lifecycle ? <GuestOverview status={status} network={network} request={request} disk={disk}
+      lifecycle ? <GuestOverview name={profile || "macOS 客机"} status={status} network={network} request={request} disk={disk}
         onStart={() => lifecycleAction.current?.("start")} onRestart={() => lifecycleAction.current?.("restart")}
         onStop={stop} onOpen={() => openDesktop()} onNavigate={navigate} /> :
-      page === "space" ? <>
+      page === "machines" ? <>
+        <VMProfiles status={status} onConfirm={confirm} />
         {installed ? <DiskCapacity status={status} onConfirm={confirm} onChanged={() => { setDisk(null); void pollNow.current?.(); }} /> : <section className="vm-card vm-empty" aria-label="虚拟磁盘">
           <h2>还没有安装 macOS</h2><p>完成安装后，这里会显示磁盘容量、扩容和缓存清理。</p>
-          <button className="primary" onClick={() => navigate("desktop")}>打开安装向导</button>
+          <button className="primary" onClick={() => navigate("overview")}>打开安装向导</button>
         </section>}
         {installed && <SpaceManagement ready={status.ready && !status.job?.running} onConfirm={confirm} onStart={() => lifecycleAction.current?.("start")} running={status.vm_running} />}
-      </> : page === "profiles" ? <VMProfiles status={status} onConfirm={confirm} />
-      : page === "login" ? <GuestLoginDetails installed={installed} ready={status.ready && !status.job?.running} username={account?.macos_guest_user} passwordPending={account?.macos_password_pending} onConfirm={confirm} />
-      : page === "timezone" ? <GuestTimezone status={status} installed={installed} settingsOpen={Boolean(section)}
-          onSettings={() => openSettings("region")} onRestart={() => lifecycleAction.current?.("restart")} />
-      : page === "input" ? <GuestInputSources ready={status.ready} onOpen={() => openDesktop("desktop", false)} />
+      </> : page === "system" ? <>
+        <GuestLoginDetails installed={installed} ready={status.ready && !status.job?.running} username={account?.macos_guest_user} passwordPending={account?.macos_password_pending} onConfirm={confirm} />
+        <GuestTimezone status={status} installed={installed} settingsOpen={false}
+          onSettings={() => document.getElementById("vmac-region")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          onRestart={() => lifecycleAction.current?.("restart")} />
+        <GuestInputSources ready={status.ready} onOpen={() => openDesktop("desktop", false)} />
+      </> : page === "sharing" ? <SharingPage />
+      : page === "general" ? <GeneralPage />
       : page === "checks" ? <ChecksPage status={status} protection={protection} tab={checksTab} onTabChange={setChecksTab}
-          onConfirm={confirm} onSettings={openSettings} onInstall={setup && !installed ? () => navigate("desktop") : undefined} />
-      : <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}
-          onApplied={() => pollNow.current?.()} onChecks={() => navigate("checks", "gateway")} protection={protection} />}
+          onConfirm={confirm} onSettings={openSettings} onInstall={setup && !installed ? () => navigate("overview") : undefined} />
+      : page === "proxy" ? <ProxySettings status={status} onConfirm={confirm} onDirty={value => { proxyDirty.current = value; }}
+          onApplied={() => { void pollNow.current?.(); void refreshSettings(); }} onChecks={() => navigate("checks", "gateway")} protection={protection} />
+      : null}
+      {status && settings && embeddedSections(page).map(id => <SettingsPanel key={`${id}:${settingsVersion}`} embedded sections={[id]}
+        current={settings} status={status} onClose={() => {}} onConfirm={confirm} onSaved={refreshSettings} onOpenSection={openSettings}
+        onDirtyChange={dirty => { settingsDirty.current[id] = dirty; }} />)}
     </div>}
-    {section && status && settings && <SettingsPanel current={settings} status={status} initialSection={section}
-      onClose={() => setSection("")} onConfirm={confirm} onSaved={async () => setSettings(await api("/settings"))} />}
     {dialog && <Modal title={dialog.title} onClose={() => resolve(false)}
-      footer={<><button onClick={() => resolve(false)}>取消</button><button className="primary" onClick={() => resolve(true)}>{dialog.confirm}</button></>}>
+      footer={<><button onClick={() => resolve(false)}>取消</button><button className={dialog.danger ? "primary danger" : "primary"} onClick={() => resolve(true)}>{dialog.confirm}</button></>}>
       <div className="modal-body">{dialog.body}</div>
     </Modal>}
   </main>;

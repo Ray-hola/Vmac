@@ -20,7 +20,7 @@ import { bindDetectedMacOSExit } from "./safety";
 import { needsProxySetup } from "./onboarding-state.mjs";
 import { macOSNetworkRestartMessage, networkState } from "./safety-state.mjs";
 import { useSSHNavigation } from "./remote-hosts";
-import logo from "./logo.png";
+import { logo } from "./brand-logo";
 import "./initialization.css";
 
 const steps = [["system", "系统与存储"], ["proxy", "网络代理"], ["install", "安装与检查"]];
