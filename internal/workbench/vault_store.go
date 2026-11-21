@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Ray-hola/Vmac/internal/host"
+	"github.com/Ray-hola/Vmac/internal/version"
 )
 
 const vaultDomain = "Cage password vault v1"
@@ -168,7 +169,7 @@ func (a *localAccount) verifyVaultPassword(password string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.record != nil && a.record.TrustedDevice != "" {
-		return errors.New("查看或复制密码前，请在本机的「设置 → 账户」设置密码")
+		return errors.New("查看或复制密码前，请在本机的" + version.AccountPlace() + "设置密码")
 	}
 	if len(a.key) != 32 {
 		return errors.New("请先解锁 VMac")

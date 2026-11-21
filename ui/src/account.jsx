@@ -20,6 +20,7 @@ import {
 import { api, native, nativeAvailable, writeClipboard } from "./api";
 import { getClientContext, isRemoteClient } from "./client-context.mjs";
 import { logo } from "./brand-logo";
+import { placeName } from "./vmac-pages.mjs";
 import "./account.css";
 
 const AccountContext = createContext(null);
@@ -282,11 +283,11 @@ export function AccountGate({ children }) {
           await trustedLogin(rememberThisDevice ? "enable" : "disable", password);
           await refresh();
         } catch (e) {
-          setDeviceNotice(`已登录，${rememberThisDevice ? "记住我未能开启" : "记住我未能关闭"}：${e.message}。可在「设置 → 账户」中重试。`);
+          setDeviceNotice(`已登录，${rememberThisDevice ? "记住我未能开启" : "记住我未能关闭"}：${e.message}。可在「${placeName("account")}」中重试。`);
         }
       } else if (creating && rememberThisDevice && deviceSupport?.supported && deviceSupport.device_status) {
         try { await deviceAction("enable", "automatic"); }
-        catch (e) { setDeviceNotice(`账户已创建，记住登录未能开启：${e.message}。可在「设置 → 账户」中重试。`); }
+        catch (e) { setDeviceNotice(`账户已创建，记住登录未能开启：${e.message}。可在「${placeName("account")}」中重试。`); }
       }
       setPassword("");
       setConfirmation("");
@@ -376,7 +377,7 @@ export function AccountGate({ children }) {
                 </p>
               )}
               {!creating && Object.values(deviceSupport?.device_status || {}).includes("missing") && (
-                <p className="field-help" role="status">当前目录的快捷登录凭据缺失或已失效。请用密码解锁，再到「设置 → 账户 → 登录与解锁」重新开启。</p>
+                <p className="field-help" role="status">当前目录的快捷登录凭据缺失或已失效。请用密码解锁，再到「{placeName("account")} → 登录与解锁」重新开启。</p>
               )}
               {!creating && Object.values(deviceSupport?.device_status || {}).includes("unavailable") && (
                 <p className="field-help" role="status">暂时无法检查系统钥匙串，请先用密码解锁。快捷登录授权记录已保留。</p>
@@ -426,7 +427,7 @@ export function AccountGate({ children }) {
         {!account?.trusted_local && <p className="account-recovery-note">
           {creating
             ? "注册后会生成恢复密钥。请保存到密码管理器，忘记密码时可用它恢复。"
-            : account?.recovery_ready ? "忘记密码时，可使用已保存的恢复密钥重置。" : "此账户尚未设置恢复密钥。能登录时，请到「设置 → 账户」补设。"}
+            : account?.recovery_ready ? "忘记密码时，可使用已保存的恢复密钥重置。" : `此账户尚未设置恢复密钥。能登录时，请到「${placeName("account")}」补设。`}
         </p>}
       </section>
       {nativeAvailable() && (
@@ -502,7 +503,7 @@ function AccountRecovery({ onBack, onReset }) {
         <p className="field-help">重置后会换发恢复密钥，旧密钥失效。VMac 的记住我和快捷解锁会关闭。</p>
         {error && <p className="account-error" role="alert">{error}</p>}
         <button className="primary account-submit" disabled={!code.trim() || !password || !confirmation}>{busy ? "正在重置…" : "重置密码"}</button>
-      </fieldset></form> : <p className="field-help" role="status">此账户尚未设置恢复密钥。请使用原密码或已开启的快捷登录进入，再到「设置 → 账户」补设。若所有解锁方式均不可用，当前无法恢复加密资料；现有数据会保留。</p>}
+      </fieldset></form> : <p className="field-help" role="status">此账户尚未设置恢复密钥。请使用原密码或已开启的快捷登录进入，再到「{placeName("account")}」补设。若所有解锁方式均不可用，当前无法恢复加密资料；现有数据会保留。</p>}
       <button className="text-button account-submit" disabled={busy} onClick={onBack}>返回密码登录</button>
     </section>
   </main>;

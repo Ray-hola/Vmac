@@ -38,6 +38,15 @@ export function pageFor(destination) {
   return aliases[destination] || "overview";
 }
 
+// How a hint names where a setting lives. VMac names the page that now holds
+// the old section; the shared workbench, which still has the settings panel,
+// keeps the old wording. internal/version/places.go says the same for
+// messages from the backend.
+const panelNames = { account: "设置 → 账户", network: "网络与代理设置", management: "虚拟机管理", timezone: "虚拟机管理" };
+export function placeName(section, vmac = typeof window !== "undefined" && Boolean(window.cageNativeVMWorkbench)) {
+  return vmac ? pages[pageFor(section)].title : panelNames[section];
+}
+
 // The sections of the old settings panel that a page shows in place. The
 // general page draws the display settings itself, so "appearance" is not here.
 const embedded = {

@@ -457,7 +457,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         let folder = CageProfile.profileFolder(CageProfile.activeProfile)
         guard !FileManager.default.fileExists(atPath: folder.appendingPathComponent("macos-guest.json").path),
               !FileManager.default.fileExists(atPath: folder.appendingPathComponent("state/lima/mac/disk").path) else {
-            toast?.show("请在虚拟机管理中切换", kind: .info)
+            toast?.show("请在「虚拟机与磁盘」中切换", kind: .info)
             return
         }
         relaunchVMac(profile: CageProfile.defaultProfile) { [weak self] _, error in

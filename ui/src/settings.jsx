@@ -38,7 +38,7 @@ import { MacOSRecoveryButton } from "./macos-recovery";
 import { ScreenSharingChecks } from "./macos-screen-sharing";
 import { AccountSettings } from "./account";
 import { AboutSettings } from "./about-settings";
-import { leavingNeedsConfirm, settingsFooterVisible } from "./vmac-pages.mjs";
+import { leavingNeedsConfirm, placeName, settingsFooterVisible } from "./vmac-pages.mjs";
 const sections = [
   ["account", "账户", UserRound],
   ["vault", "密码保险箱", KeyRound],
@@ -368,7 +368,7 @@ export function SettingsPanel({
                   <span>
                     <strong>跟随出口 IP 的时区</strong>
                     <small>
-                      启动、重启或应用设置时重新查询出口。客机运行时可从虚拟机管理确认重启并应用。
+                      启动、重启或应用设置时重新查询出口。客机运行时可在「{placeName("timezone")}」确认重启并应用。
                     </small>
                   </span>
                   <input
