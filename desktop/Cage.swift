@@ -42,7 +42,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     private var guestSplitView: NSSplitView?
     private var vmacToolbar: VMacToolbarController?
     private var toast: VMacToastView?
-    private var preferredSidebarWidth: CGFloat = 220
+    private var preferredSidebarWidth = VMacSidebarWidth.standard
     private var shell = VMacShellState()
     private var shellMenuItems: [VMacMenuKey: NSMenuItem] = [:]
     private var preferenceMenuItems: [VMacPreference: NSMenuItem] = [:]
@@ -142,8 +142,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         content.wantsLayer = nativeVMWorkbench
         guestContent = content
         if nativeVMWorkbench {
-            let savedWidth = UserDefaults.standard.object(forKey: "vmac.sidebarWidth.v2") as? Double ?? 220
-            preferredSidebarWidth = CGFloat(min(280, max(180, savedWidth)))
+            preferredSidebarWidth = VMacSidebarWidth.restored(UserDefaults.standard.object(forKey: "vmac.sidebarWidth.v2") as? Double)
             let sidebar = CageGuestSidebar()
             sidebar.onSelect = { [weak self] destination in self?.selectGuestDestination(destination) }
             let split = VMacSplitView(frame: root.bounds)
@@ -352,10 +351,10 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
         catch { let alert = NSAlert(error: error); alert.beginSheetModal(for: window) }
     }
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        shell.sidebarVisible ? 180 : 0
+        shell.sidebarVisible ? VMacSidebarWidth.rail : 0
     }
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        shell.sidebarVisible ? min(280, splitView.bounds.width - 600) : 0
+        shell.sidebarVisible ? VMacSidebarWidth.widest(in: splitView.bounds.width) : 0
     }
     func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
         !shell.sidebarVisible
@@ -419,7 +418,7 @@ final class CageApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSSplitV
     func splitViewDidResizeSubviews(_ notification: Notification) {
         guard let split = notification.object as? NSSplitView, split === guestSplitView,
               NSApp.currentEvent?.type == .leftMouseDragged,
-              shell.sidebarVisible, let width = guestSidebar?.frame.width, width >= 180, width <= 280 else { return }
+              shell.sidebarVisible, let width = guestSidebar?.frame.width, VMacSidebarWidth.remembers(width) else { return }
         preferredSidebarWidth = width
         UserDefaults.standard.set(Double(width), forKey: "vmac.sidebarWidth.v2")
     }

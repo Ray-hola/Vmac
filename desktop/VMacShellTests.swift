@@ -81,6 +81,13 @@ enum VMacShellTests {
         precondition(VMacStatus(name: "默认", tone: "ok", detail: "已保护").detail == "已保护")
         precondition(VMacStatus(name: "默认", tone: "ok", detail: "已保护", updatePending: true).detail == "已保护 · 更新待完成")
         precondition(VMacStatus(name: "默认", tone: "idle", detail: "", updatePending: true).detail == "更新待完成")
-        print("VMac shell state, status, toast, full screen and menu key checks passed")
+        // The divider drags the sidebar from a rail of icons to a full list.
+        precondition(VMacSidebarWidth.restored(nil) == 220, "a first launch opens at the standard width")
+        precondition(VMacSidebarWidth.restored(180) == 180 && VMacSidebarWidth.restored(96) == 96)
+        precondition(VMacSidebarWidth.restored(20) == 64 && VMacSidebarWidth.restored(400) == 260, "a saved width out of range is brought back in")
+        precondition(VMacSidebarWidth.widest(in: 1280) == 260 && VMacSidebarWidth.widest(in: 820) == 220, "the page keeps 600 for itself")
+        precondition(VMacSidebarWidth.remembers(64) && VMacSidebarWidth.remembers(260))
+        precondition(!VMacSidebarWidth.remembers(63.5) && !VMacSidebarWidth.remembers(261), "a width the divider cannot reach is not saved")
+        print("VMac shell state, status, toast, full screen, menu key and sidebar width checks passed")
     }
 }

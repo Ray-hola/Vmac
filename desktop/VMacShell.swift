@@ -24,6 +24,18 @@ struct VMacShellState: Equatable {
     var sidebarVisible: Bool { mode == .controlCenter }
 }
 
+/// How wide the sidebar may be. The divider drags it from a rail of icons to
+/// a full list, and the page beside it always keeps room to be read.
+enum VMacSidebarWidth {
+    static let rail: CGFloat = 64, widest: CGFloat = 260, standard: CGFloat = 220
+    static let pageMinimum: CGFloat = 600
+    static func widest(in windowWidth: CGFloat) -> CGFloat { min(widest, windowWidth - pageMinimum) }
+    /// A saved width, brought back into range; the standard width when none is saved.
+    static func restored(_ saved: Double?) -> CGFloat { min(widest, max(rail, saved.map { CGFloat($0) } ?? standard)) }
+    /// Only a width the divider can reach is worth saving.
+    static func remembers(_ width: CGFloat) -> Bool { width >= rail && width <= widest }
+}
+
 enum VMacTone: String { case busy, ok, warn, bad, idle }
 
 /// What the toolbar's status pill shows. With the window title hidden, the
