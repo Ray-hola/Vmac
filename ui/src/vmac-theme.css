@@ -1,7 +1,7 @@
 /*
  * VMac theme: DeepSeek's palette, shapes and type scale, read from its own
  * stylesheet. A white page, a #F9FAFB sidebar, #F1F3F5 fields, near-black
- * text and one blue. VMac is always light. The values mirror vmac-tokens.mjs;
+ * text, one blue, and a green for a good state. VMac is always light. The values mirror vmac-tokens.mjs;
  * vmac-theme.test.mjs fails when they drift.
  */
 :root.vmac-theme {
@@ -11,15 +11,16 @@
   --accent: #3964fe !important; --focus: #3964fe !important; --link: #3964fe !important;
   --button: #3964fe !important; --button-ink: #ffffff !important;
   --hover: rgba(38, 49, 72, .06) !important; --selected: #e4edfd !important; --selection: #e4edfd !important;
-  /* A good state is said in the one blue; red is for failure, amber for a warning. */
-  --success: #3964fe !important; --danger: #ec1313 !important;
+  /* Green for a good state, on marks and pale fills only: at 2.3:1 on white it
+     is too light for words. Red is for failure, amber for a warning. */
+  --success: #22c55e !important; --danger: #ec1313 !important;
   --ui-font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif !important;
   --code-font-family: Menlo, Monaco, "SF Mono", ui-monospace, "PingFang SC", monospace !important;
   --card: #ffffff; --well: #f1f3f5; --nav-active: #ebeef2; --warn: #dd8629; --faint: #81858c; --caption: #adb2b8;
   --accent-text: #3964fe; --accent-soft: #e4edfd; --accent-faint: #edf3fe; --accent-border: #b7c8fe;
   --button-hover: #5686fe; --button-active: #3964fe; --pressed: rgba(38, 49, 72, .1);
-  --ok-dot: #3964fe; --warn-dot: #f59e0b; --bad-dot: #ec1313;
-  --success-soft: #edf3fe; --warn-soft: #fef5e7; --danger-soft: rgba(236, 19, 19, .05);
+  --ok-dot: #22c55e; --warn-dot: #f59e0b; --bad-dot: #ec1313;
+  --success-soft: #e6faed; --warn-soft: #fef5e7; --danger-soft: rgba(236, 19, 19, .05);
   /* Type scale: 12, 13, 14, 16, 20 and 24 at the default text size. The root
      size is the interface text size, so sizes in rem follow that setting. */
   --vm-text-xs: .857rem; --vm-text-sm: .929rem; --vm-text-md: 1rem; --vm-text-lg: 1.143rem; --vm-text-xl: 1.429rem; --vm-text-2xl: 1.714rem;

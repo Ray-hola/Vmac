@@ -134,7 +134,8 @@
   & p { margin: .143rem 0 0; color: var(--muted); }
 }
 
-/* Rows: what it is on the left, its control or value on the right. */
+/* Rows: what it is on the left, in DeepSeek's label grey; its control or
+   value on the right, in the text color. */
 .vm-row {
   position: relative;
   box-sizing: border-box;
@@ -150,8 +151,9 @@
 .vm-row-text {
   display: grid;
   min-inline-size: 0;
+  color: var(--faint);
 
-  & small { color: var(--muted); font-size: var(--vm-text-sm); line-height: 1.538; overflow-wrap: anywhere; }
+  & small { font-size: var(--vm-text-sm); line-height: 1.538; overflow-wrap: anywhere; }
 }
 .vm-row-control { flex-shrink: 0; display: flex; align-items: center; gap: .571rem; }
 .vm-row-value { min-inline-size: 0; margin-inline-start: auto; text-align: end; overflow-wrap: anywhere; }
@@ -365,15 +367,14 @@
   align-items: flex-start;
   gap: .429rem;
   margin: .857rem 0 0;
-  color: var(--accent);
   font-size: var(--vm-text-sm);
   animation: vm-rise var(--vm-slow) var(--vm-ease);
 
-  & svg { flex-shrink: 0; margin-block-start: .2rem; }
+  & svg { flex-shrink: 0; margin-block-start: .2rem; color: var(--success); }
 }
 
-/* A state is a dot and a word. Blue: well, and it fades in and out while
-   working. Amber: needs a look. Red: failed. Pale: at rest. */
+/* A state is a dot and a word. Green: well. Blue: working, and it fades in
+   and out. Amber: needs a look. Red: failed. Pale: at rest. */
 .vm-chip, .vm-state {
   display: inline-flex;
   align-items: center;
@@ -382,7 +383,8 @@
   white-space: nowrap;
 
   & i { flex-shrink: 0; inline-size: 8px; aspect-ratio: 1; border-radius: 50%; background: var(--caption); }
-  &:is(.ok, .busy) i { background: var(--ok-dot); }
+  &.ok i { background: var(--ok-dot); }
+  &.busy i { background: var(--accent); }
   &.warn i { background: var(--warn-dot); }
   &.bad i { background: var(--bad-dot); }
   &.bad { color: var(--danger); }
@@ -460,7 +462,8 @@
   font-weight: 500;
   line-height: 1.538;
 
-  &:is(.ok, .busy) { background: var(--accent-faint); color: var(--accent); }
+  &.ok { background: var(--success-soft); color: var(--ink); }
+  &.busy { background: var(--accent-faint); color: var(--accent); }
   &.warn { background: var(--warn-soft); color: var(--warn); }
   &.bad { background: var(--danger-soft); color: var(--danger); }
 }
@@ -555,7 +558,7 @@
 
   & > div { box-sizing: border-box; display: grid; grid-template-columns: minmax(6rem, 12rem) minmax(0, 1fr); align-items: center; gap: 1rem; min-block-size: 3.429rem; padding-block: .714rem; }
   & > div + div { border-block-start: 1px solid var(--line); }
-  & dt { color: var(--muted); }
+  & dt { color: var(--faint); }
   & dd { margin: 0; min-inline-size: 0; overflow-wrap: anywhere; }
   & code { user-select: text; white-space: pre-wrap; }
 }
@@ -588,8 +591,9 @@
   animation: vm-rise var(--vm-slow) var(--vm-ease);
 
   & > span { font-weight: 500; }
-  & .ok { color: var(--accent); }
+  & :is(.ok, .bad)::before { content: ""; display: inline-block; inline-size: 8px; aspect-ratio: 1; margin-inline-end: .429rem; border-radius: 50%; background: var(--ok-dot); }
   & .bad { color: var(--danger); }
+  & .bad::before { background: var(--bad-dot); }
   & small { color: var(--muted); font-size: var(--vm-text-sm); }
   &.stale { opacity: .5; }
 }
@@ -659,7 +663,7 @@
 }
 .vm-site-legend { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin: 0 0 .857rem; padding: 0; color: var(--muted); font-size: var(--vm-text-sm); list-style: none; }
 .vm-site-legend li, .vm-site-rounds { display: flex; align-items: center; gap: .4rem; }
-/* One round of a probe: blue when quick, pale blue when fair, amber when
+/* One round of a probe: green when quick, pale green when fair, amber when
    slow, red when it failed, a faint dot when not yet run. */
 .vm-site-dot {
   flex: none;
@@ -668,8 +672,8 @@
   border-radius: 50%;
   background: var(--nav-active);
 
-  &.fast { background: var(--accent); }
-  &.mid { background: var(--accent-border); }
+  &.fast { background: var(--ok-dot); }
+  &.mid { background: color-mix(in srgb, var(--ok-dot) 40%, var(--paper)); }
   &.slow { background: var(--warn-dot); }
   &.failed { background: var(--bad-dot); }
 }
@@ -751,6 +755,7 @@
 .vmac-theme .safety-summary h3 { font-size: var(--vm-text-lg); font-weight: 500; }
 .vmac-theme .safety-summary p { color: var(--muted); font-size: var(--vm-text-md); }
 .vmac-theme .safety-summary svg:first-child { color: var(--accent); }
+.vmac-theme .safety-summary.open > svg:first-child { color: var(--success); }
 .vmac-theme .safety-section-heading h4 { font-size: var(--vm-text-md); font-weight: 500; }
 .vmac-theme .safety-section-heading > span, .vmac-theme .safety-timestamp { color: var(--muted); }
 .vmac-theme .safety-checks, .vmac-theme .safety-check-list { border: 0; border-radius: 0; overflow: visible; }
@@ -815,8 +820,8 @@
 .native-guest-home .proxy-chain-exit :is(strong, small) { color: var(--accent); }
 .native-guest-home .proxy-badge { padding: .143rem .714rem; border-radius: var(--radius-pill); background: var(--well); color: var(--muted); font-size: var(--vm-text-sm); font-weight: 500; }
 .native-guest-home .proxy-badge i { opacity: 1; background: var(--caption); }
-.native-guest-home .proxy-badge.online { background: var(--accent-faint); color: var(--accent); }
-.native-guest-home .proxy-badge.online i { background: var(--accent); }
+.native-guest-home .proxy-badge.online { background: var(--success-soft); color: var(--ink); }
+.native-guest-home .proxy-badge.online i { background: var(--ok-dot); }
 /* One hop or a chain, and the tabs: the same track and thumb as elsewhere. */
 .native-guest-home :is(.proxy-route-mode, .proxy-tabs) {
   display: flex;
@@ -880,7 +885,8 @@
 .native-guest-home .proxy-help-notes { border-block-start-color: var(--line); }
 .native-guest-home .proxy-help-toggle { border-radius: 8px; color: var(--faint); }
 .native-guest-home .proxy-help-toggle[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
-.native-guest-home .proxy-notice { color: var(--accent); font-size: var(--vm-text-sm); animation: vm-rise var(--vm-slow) var(--vm-ease); }
+.native-guest-home .proxy-notice { color: var(--ink); font-size: var(--vm-text-sm); animation: vm-rise var(--vm-slow) var(--vm-ease); }
+.native-guest-home .proxy-notice::before { content: ""; display: inline-block; inline-size: 8px; aspect-ratio: 1; margin-inline-end: .429rem; border-radius: 50%; background: var(--ok-dot); }
 .native-guest-home .proxy-notice .text-button { margin-inline-start: .4rem; }
 .native-guest-home .proxy-manager .proxy-import { margin-block-start: 2rem; animation: vm-slide-down var(--vm-mid) var(--vm-ease); }
 .native-guest-home .proxy-import textarea { padding: .714rem .857rem; border: 0; border-radius: var(--radius-control); background: var(--well); }
@@ -975,11 +981,11 @@
   & .settings-content :is(.field-help, .footnote) { max-inline-size: 62ch; margin: .429rem 0 1.143rem; color: var(--muted); font-size: var(--vm-text-sm); line-height: 1.538; }
   & .settings-content label + .field-help { margin-block-start: -.714rem; }
   & .settings-content .toggle-row { box-sizing: border-box; align-items: center; gap: 1.5rem; min-block-size: var(--vm-row); margin: 0; padding: .857rem 0; border: 0; border-block-end: 1px solid var(--line); }
-  & .settings-content .toggle-row strong { font-weight: 400; }
-  & .settings-content .toggle-row small { color: var(--muted); font-size: var(--vm-text-sm); }
+  & .settings-content .toggle-row strong { color: var(--faint); font-weight: 400; }
+  & .settings-content .toggle-row small { color: var(--faint); font-size: var(--vm-text-sm); }
   & .settings-content .toggle-row + :not(.toggle-row) { margin-block-start: 1.143rem; }
   /* A fact and its value on one row. */
-  & .setting-summary-row { box-sizing: border-box; min-block-size: 3.429rem; margin: 0; padding: .714rem 0; border-block-end: 1px solid var(--line); color: var(--muted); font-size: var(--vm-text-md); font-weight: 400; }
+  & .setting-summary-row { box-sizing: border-box; min-block-size: 3.429rem; margin: 0; padding: .714rem 0; border-block-end: 1px solid var(--line); color: var(--faint); font-size: var(--vm-text-md); font-weight: 400; }
   & .setting-summary-row strong { color: var(--ink); font-size: var(--vm-text-md); font-weight: 400; }
   & :is(.environment-versions, .environment-cache, .settings-group, .resource-runtime) { margin-block-start: 0; padding-block-start: 0; border: 0; }
   & :is(.cache-item, .cache-protected, .cache-result) { border: 0; border-radius: var(--radius-item); background: var(--chrome); }

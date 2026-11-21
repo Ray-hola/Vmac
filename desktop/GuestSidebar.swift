@@ -222,7 +222,8 @@ private final class SidebarMachineCard: NSView {
         if state.stringValue != text { SidebarMotion.fade(state.layer); state.stringValue = text }
         state.textColor = returning ? CagePalette.accentText : CagePalette.secondary
         state.font = .systemFont(ofSize: 11.5, weight: returning ? .medium : .regular)
-        dotColor = !setup && (busy || running) ? CagePalette.accent : CagePalette.caption
+        // Green once the desktop is ready, blue while it is on its way there.
+        dotColor = setup || !(busy || running) ? CagePalette.caption : returning ? CagePalette.ok : CagePalette.accent
         refreshDot()
         let pulsing = (busy || (running && !ready)) && !setup
         if pulsing, halo.animation(forKey: "pulse") == nil, !SidebarMotion.reduced {
@@ -279,8 +280,8 @@ private final class SidebarLamp: NSButton {
     }
     required init?(coder: NSCoder) { fatalError() }
     func update(_ detail: String, _ state: Int) {
-        // Blue when well or working, red when failed, pale when at rest.
-        color = state == 1 || state == 2 ? CagePalette.accent : state == 4 ? CagePalette.danger : CagePalette.caption
+        // Green when well, blue when working, red when failed, pale when at rest.
+        color = state == 1 ? CagePalette.ok : state == 2 ? CagePalette.accent : state == 4 ? CagePalette.danger : CagePalette.caption
         toolTip = "\(name)：\(detail)"; setAccessibilityValue(detail); needsDisplay = true
     }
     override func draw(_ dirtyRect: NSRect) {

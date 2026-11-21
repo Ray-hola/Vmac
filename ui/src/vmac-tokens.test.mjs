@@ -16,8 +16,9 @@ test("contrast follows WCAG", () => {
 });
 for (const mode of ["light"]) {
   const t = tokens[mode];
-  // Text that carries meaning keeps 4.5:1. The tertiary and caption steps
-  // are DeepSeek's and stay for labels that repeat what is said elsewhere.
+  // Values, headings and running text keep 4.5:1. The name of a row is in
+  // DeepSeek's label grey (tertiary), which is 3.7:1 on the page; the caption
+  // step is for placeholders.
   const pairs = [["ink", "page"], ["ink", "chrome"], ["ink", "fill"], ["ink", "accentSoft"], ["secondary", "page"],
     ["secondary", "fill"], ["accentText", "page"], ["onAccent", "accentFill"]];
   for (const [text, surface] of pairs) {
@@ -31,8 +32,11 @@ for (const mode of ["light"]) {
 test("the failure red stays visible", () => {
   assert.ok(contrast(tokens.light.bad, tokens.light.page) >= 3);
 });
+test("a row's name stays readable in the label grey", () => {
+  assert.ok(contrast(tokens.light.tertiary, tokens.light.page) >= 3.5);
+});
 test("the values are DeepSeek's", () => {
   const t = tokens.light;
-  assert.deepEqual([t.chrome, t.fill, t.secondary, t.tertiary, t.accentSoft, t.accentFillHover],
-    ["#F9FAFB", "#F1F3F5", "#61666B", "#81858C", "#E4EDFD", "#5686FE"]);
+  assert.deepEqual([t.chrome, t.fill, t.secondary, t.tertiary, t.accentSoft, t.accentFillHover, t.ok, t.okSoft],
+    ["#F9FAFB", "#F1F3F5", "#61666B", "#81858C", "#E4EDFD", "#5686FE", "#22C55E", "#E6FAED"]);
 });

@@ -174,7 +174,7 @@ export function GuestLoginDetails({ installed, ready, username, passwordPending,
           {adminPending && <LoaderCircle size={15} className="spin" aria-hidden="true" />}关闭管理员权限
         </button>}
       </div>
-      {notice && <p className="vm-success" role="status">{notice}</p>}
+      {notice && <p className="vm-success" role="status"><Check size={14} />{notice}</p>}
       {error && <p className="vm-error" role="alert">{error}</p>}
     </>}
   </section>;

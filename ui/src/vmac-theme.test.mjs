@@ -10,7 +10,8 @@ const has = (text, name, value) => text.includes(`${name}: ${value.toLowerCase()
 test("light variables come from the tokens", () => {
   const light = block(":root.vmac-theme {");
   for (const [name, key] of [["--paper", "page"], ["--chrome", "chrome"], ["--ink", "ink"], ["--muted", "secondary"],
-    ["--accent", "accent"], ["--button", "accentFill"], ["--link", "accentText"], ["--danger", "bad"], ["--well", "fill"]]) {
+    ["--accent", "accent"], ["--button", "accentFill"], ["--link", "accentText"], ["--danger", "bad"], ["--well", "fill"],
+    ["--faint", "tertiary"], ["--success", "ok"], ["--ok-dot", "ok"], ["--success-soft", "okSoft"]]) {
     assert.ok(has(light, name, tokens.light[key]), `${name} should be ${tokens.light[key]}`);
   }
 });

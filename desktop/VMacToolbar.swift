@@ -42,7 +42,8 @@ private final class VMacStatusPill: NSView {
     }
     private var toneColor: NSColor {
         switch status.tone {
-        case .busy, .ok: return CagePalette.accent
+        case .ok: return CagePalette.ok
+        case .busy: return CagePalette.accent
         case .warn: return CagePalette.warn
         case .idle: return CagePalette.caption
         case .bad: return CagePalette.danger

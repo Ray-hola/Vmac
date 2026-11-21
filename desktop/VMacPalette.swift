@@ -2,8 +2,8 @@ import Cocoa
 
 /// VMac's colors, in step with ui/src/vmac-tokens.mjs; the test in
 /// ui/src/vmac-palette-sync.test.mjs fails when a hex value drifts. They are
-/// DeepSeek's: a white page, a faintly blue-grey sidebar, near-black text and
-/// one blue. VMac is always light.
+/// DeepSeek's: a white page, a faintly blue-grey sidebar, near-black text, one
+/// blue, and a green for a good state. VMac is always light.
 enum CagePalette {
     private static func solid(_ hex: Int) -> NSColor {
         NSColor(srgbRed: CGFloat((hex >> 16) & 255) / 255, green: CGFloat((hex >> 8) & 255) / 255,
@@ -21,6 +21,7 @@ enum CagePalette {
     static let accent = solid(0x3964FE) // token: accent
     static let accentText = solid(0x3964FE) // token: accentText
     static let accentSoft = solid(0xE4EDFD) // token: accentSoft
+    static let ok = solid(0x22C55E) // token: ok
     static let warn = solid(0xF59E0B) // token: warn
     static let danger = solid(0xEC1313) // token: bad
     static let dangerOnDark = solid(0xF25A5A) // token: badOnDark
