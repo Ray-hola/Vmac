@@ -278,12 +278,12 @@ function Initialization({ initial, onComplete }) {
                 <li>启动恢复客机。</li>
                 <li>打开恢复画面，先登录安装时创建的客机普通账户。</li>
                 <li>点击「打开 Apple Installer」继续安装。</li>
-                <li>安装器要求管理员认证时，用户名填 cagesetup，密码与你登录 VMac 的账户密码相同。</li>
+                <li>安装器要求管理员认证时，用户名填 vmacsetup（旧版本开始安装的客机是 cagesetup），密码与你登录 VMac 的账户密码相同。</li>
                 <li>系统弹出允许访问系统配置文件的提示时，选择允许。</li>
               </ol>
               <p>安装过程中关闭恢复画面会取消本次作业；取消不会丢失已有进度，重新启动客机后再试。反复失败时，可使用页面底部的「日志与诊断」查看记录。</p>
               {!macRecovery.running && <button disabled={busy} onClick={() => run(() => api("/macos/install-recovery", { action: "start" }))}>启动恢复客机</button>}
-              {macRecovery.running && <MacOSLogin initialSetup installRecovery label="打开恢复画面" setupHint="先登录安装时创建的客机普通账户，再点击「打开 Apple Installer」。管理员认证用户名填 cagesetup，密码与 VMac 账户相同；系统提示时选择允许。" setupStatus="安装完成后返回 VMac 继续置备。" setupActions={<button disabled={busy} onClick={() => run(() => api("/macos/install-recovery", { action: "resume" }))}>打开 Apple Installer</button>} onSettings={() => setHelp(true)} />}
+              {macRecovery.running && <MacOSLogin initialSetup installRecovery label="打开恢复画面" setupHint="先登录安装时创建的客机普通账户，再点击「打开 Apple Installer」。管理员认证用户名填 vmacsetup（旧版本开始安装的客机是 cagesetup），密码与 VMac 账户相同；系统提示时选择允许。" setupStatus="安装完成后返回 VMac 继续置备。" setupActions={<button disabled={busy} onClick={() => run(() => api("/macos/install-recovery", { action: "resume" }))}>打开 Apple Installer</button>} onSettings={() => setHelp(true)} />}
             </section>}
             {pending?.system === "macos" && macRecovery && !macRecovery.available && macRecovery.can_prepare && <section className="initialization-notice" aria-label="macOS 安装恢复">
               <p>检测到未完成的 macOS 安装；macOS 27 需要你在客机中完成一次管理员授权，这是正常流程。后续恢复将沿用原客机磁盘。准备完成后，这里会出现继续安装的指引。</p>

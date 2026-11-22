@@ -74,3 +74,48 @@ int main(int argc, const char **argv) { @autoreleasepool {
 		})
 	}
 }
+
+// The temporary administrator was renamed. A new installation creates the new
+// name; one begun by an earlier version keeps the account it already made; a
+// receipt naming anything else is refused. Compiled from the production source.
+func TestMacSetupAccountNameFollowsTheReceipt(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "guest-os", "macos-setup-account.m"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	start := strings.Index(source, "static NSString *const currentSetup")
+	end := strings.Index(source, "static void require(")
+	if start < 0 || end <= start {
+		t.Fatal("setup account name rule not found")
+	}
+	harness := `#import <Foundation/Foundation.h>
+` + source[start:end] + `
+int main(int argc, const char **argv) { @autoreleasepool {
+    NSDictionary *cases = @{
+        @"new": setupName(nil) ?: @"<refused>",
+        @"earlier": setupName(@{@"state":@"retired"}) ?: @"<refused>",
+        @"recorded-current": setupName(@{@"name":@"vmacsetup"}) ?: @"<refused>",
+        @"recorded-earlier": setupName(@{@"name":@"cagesetup"}) ?: @"<refused>",
+        @"other": setupName(@{@"name":@"root"}) ?: @"<refused>",
+        @"not-text": setupName(@{@"name":@5}) ?: @"<refused>",
+    };
+    for (NSString *key in [cases.allKeys sortedArrayUsingSelector:@selector(compare:)]) printf("%s=%s\n", key.UTF8String, [cases[key] UTF8String]);
+    return 0;
+} }
+`
+	program := filepath.Join(t.TempDir(), "setup-name-check")
+	compile := exec.CommandContext(t.Context(), "clang", "-x", "objective-c", "-fobjc-arc", "-Werror", "-", "-framework", "Foundation", "-o", program)
+	compile.Stdin = strings.NewReader(harness)
+	if output, err := compile.CombinedOutput(); err != nil {
+		t.Fatalf("compile name harness: %v\n%s", err, output)
+	}
+	output, err := exec.CommandContext(t.Context(), program).CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v: %s", err, output)
+	}
+	want := "earlier=cagesetup\nnew=vmacsetup\nnot-text=<refused>\nother=<refused>\nrecorded-current=vmacsetup\nrecorded-earlier=cagesetup\n"
+	if string(output) != want {
+		t.Fatalf("setup account names:\n%s\nwant:\n%s", output, want)
+	}
+}

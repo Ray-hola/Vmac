@@ -225,7 +225,7 @@ func TestMacGuestLegacyCredentialAndAccountAdoption(t *testing.T) {
 }
 
 func TestMacAccountRegistrationAndTrustedAdoption(t *testing.T) {
-	for _, name := range []string{"root", "cagesetup", "cageprovision", "Guest", "测试", "name with spaces"} {
+	for _, name := range []string{"root", "cagesetup", "vmacsetup", "cageprovision", "Guest", "测试", "name with spaces"} {
 		if validMacAccount(name, "fixture-password") == nil {
 			t.Fatalf("accepted unsupported username %q", name)
 		}

@@ -158,7 +158,7 @@ export function GuestLoginDetails({ installed, ready, username, passwordPending,
       {passwordPending && <p className="vm-note">客机密码待同步，请使用上次确认的密码。</p>}
       <p className="vm-note">{admin === false
         ? "当前是普通用户，安装应用时的管理员认证会失败。开启管理员权限后，用上面的用户名和密码认证。"
-        : "安装应用或修改系统设置要求管理员认证时，输入上面的用户名和密码。安装时出现的 cagesetup 只在首次设置期间有效。"}</p>
+        : "安装应用或修改系统设置要求管理员认证时，输入上面的用户名和密码。安装时出现的 vmacsetup（旧版本是 cagesetup）只在首次设置期间有效。"}</p>
       <div className="vm-actions">
         {password ? <>
           <button type="button" onClick={() => setPassword("")}><EyeOff size={15} aria-hidden="true" />隐藏密码</button>

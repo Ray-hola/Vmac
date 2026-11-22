@@ -196,7 +196,7 @@ nc() { test "$1/$2/$3" = "-z/127.0.0.1/5900" && test -f "$QA_ROOT/loaded"; }
 
         self.assertNotEqual(enable('blue').returncode, 0)
         env['VERIFIED_INTEL'] = 'yes'
-        for user in ('root', 'cagesetup', 'cageprovision'):
+        for user in ('root', 'cagesetup', 'vmacsetup', 'cageprovision'):
             self.assertNotEqual(enable(user).returncode, 0, user)
         self.assertFalse((self.root / 'group').exists())
         # The ordinary account may also hold guest administrator rights.

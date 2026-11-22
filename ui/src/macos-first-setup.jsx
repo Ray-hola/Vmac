@@ -149,7 +149,7 @@ export function MacOSFirstSetup() {
     </section>
     {failure && <section className="initialization-notice" role="alert"><h2>操作未完成</h2><p>{failure}</p></section>}
     <details className="mac-setup-help"><summary>管理员授权帮助</summary>
-      <p>如果客机要求管理员认证，用户名为 <strong>cagesetup</strong>。可在客机画面选中密码框，再点击「填写授权密码」，然后在客机内确认授权。</p>
+      <p>如果客机要求管理员认证，用户名为 <strong>vmacsetup</strong>（用旧版本开始安装的客机是 <strong>cagesetup</strong>）。可在客机画面选中密码框，再点击「填写授权密码」，然后在客机内确认授权。</p>
     </details>
     <div className="initialization-support"><button className="text-button" onClick={() => setDetails(true)}>查看操作详情</button><button className="text-button" onClick={() => setDiagnostics(!diagnostics)}>日志与诊断</button></div>
     {diagnostics && <DiagnosticSettings />}

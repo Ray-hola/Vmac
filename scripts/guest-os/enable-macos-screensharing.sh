@@ -10,7 +10,7 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 [[ $# == 1 && $EUID == 0 && $(uname -s) == Darwin ]] || exit 1
 [[ $(sysctl -n hw.model) =~ ^VirtualMac[0-9]+,[0-9]+$ ]] || /usr/local/libexec/cage-guest-check --check
 user=$1
-[[ $user =~ ^[a-z][a-z0-9_]{0,30}$ && $user != root && $user != cageprovision && $user != cagesetup ]] || exit 1
+[[ $user =~ ^[a-z][a-z0-9_]{0,30}$ && $user != root && $user != cageprovision && $user != cagesetup && $user != vmacsetup ]] || exit 1
 # The ordinary account may also be a guest administrator after first setup.
 [[ $(id -u "$user") -ge 500 ]] || exit 1
 [[ -f /var/db/cage-guest-os && ! -L /var/db/cage-guest-os && $(stat -f %u /var/db/cage-guest-os) == 0 && $(cat /var/db/cage-guest-os) == macos ]] || exit 1

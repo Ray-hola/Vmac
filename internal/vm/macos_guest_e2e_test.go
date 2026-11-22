@@ -171,7 +171,7 @@ createhomedir -c -u cage >/dev/null;
 		}
 		admin(`! pgrep -x 'Setup Assistant' >/dev/null; uid=$(id -u cage); launchctl print gui/$uid >/dev/null;
 /Users/cageprovision/automation-kit/cage-finish-initial-setup;
-! id -Gn cage | grep -qw admin; ! id -Gn cagesetup | grep -qw admin;
+! id -Gn cage | grep -qw admin; ! id -Gn vmacsetup | grep -qw admin;
 test "$(stat -f %OLp /etc/kcpassword)" = 600`)
 		t.Log("Fresh guest: automatic graphical login, skipped optional Setup Assistant, standard account and retired temporary administrator verified")
 		return
@@ -200,7 +200,7 @@ test "$(stat -f %OLp /etc/kcpassword)" = 600`)
 		admin(`mv /Users/cageprovision/kit ` + stage + `/kit; chown -R root:wheel ` + stage + `; cd /; /bin/bash ` + stage + `/kit/provision-macos-workbench.sh ` + stage + `/kit ` + uuid.NewString() + ` cageprovision < /Users/cageprovision/login-input`)
 		run(`/usr/bin/dscl /Local/Default -authonly cage >/dev/null`, strings.NewReader(password+"\n"))
 		admin(`test "$(dscl . -read /Users/cage NFSHomeDirectory)" = 'NFSHomeDirectory: /Users/cage'; if id -Gn cage | grep -qw admin; then exit 1; fi; dscl . -read /Users/cageprovision IsHidden | grep -q ": 1$"; /usr/local/libexec/cage-finish-initial-setup`)
-		admin(`if id -Gn cagesetup | grep -qw admin; then exit 1; fi; dscl . -read /Users/cagesetup UserShell | grep -q /usr/bin/false`)
+		admin(`if id -Gn vmacsetup | grep -qw admin; then exit 1; fi; dscl . -read /Users/vmacsetup UserShell | grep -q /usr/bin/false`)
 		t.Log("Fresh cage account, user-selected password, ordinary privileges and temporary administrator retirement verified")
 	}
 	verifyMacOSGuestNetwork(t, ctx, filepath.Join(state, "lima", name), run)

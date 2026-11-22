@@ -34,7 +34,7 @@ func ValidMacOSAccountName(name string) bool {
 		return false
 	}
 	switch name {
-	case "root", "daemon", "nobody", "guest", "cageprovision", "cagesetup":
+	case "root", "daemon", "nobody", "guest", "cageprovision", "cagesetup", "vmacsetup":
 		return false
 	}
 	return true

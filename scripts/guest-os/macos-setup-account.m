@@ -10,7 +10,21 @@
 #include <unistd.h>
 
 static NSString *const directory = @"/var/db/cage-initial-setup";
-static NSString *const setup = @"cagesetup";
+static NSString *const currentSetup = @"vmacsetup";
+static NSString *const earlierSetup = @"cagesetup";
+
+// The temporary administrator's short name. A new installation, which has no
+// receipt yet, takes the current name. An installation begun before the
+// account was renamed has a receipt without a name and keeps the account it
+// already created. A receipt that names anything else is refused.
+static NSString *setupName(NSDictionary *receipt) {
+    if (!receipt) return currentSetup;
+    id name = receipt[@"name"] ?: earlierSetup;
+    return [name isKindOfClass:NSString.class] && ([name isEqual:currentSetup] || [name isEqual:earlierSetup]) ? name : nil;
+}
+
+// Set once the receipt is known, before any account is looked up.
+static NSString *setup;
 
 static void require(BOOL ok, const char *reason) {
     if (!ok) { fprintf(stderr, "%s\n", reason); exit(1); }
@@ -179,7 +193,6 @@ int main(int argc, const char **argv) {
         } else require(errno == ENOENT && prepare, "Missing guest setup receipt.");
         ODNode *node = [ODNode nodeWithSession:[ODSession defaultSession] name:@"/Local/Default" error:NULL];
         ODRecord *admin = [node recordWithRecordType:kODRecordTypeGroups name:@"admin" attributes:nil error:NULL];
-        ODRecord *record = users(node, setup).firstObject;
         NSString *install = prepare || password ? @(argv[2]) : nil;
         if (install) require([[NSUUID alloc] initWithUUIDString:install] != nil, "Invalid fresh guest installation ID.");
         NSMutableDictionary *receipt;
@@ -189,17 +202,23 @@ int main(int argc, const char **argv) {
                 [[NSUUID alloc] initWithUUIDString:receipt[@"guid"]] && [receipt[@"uid"] intValue] >= 502 &&
                 [[NSUUID alloc] initWithUUIDString:receipt[@"installation"]] && (!install || [receipt[@"installation"] isEqual:install]),
                 "The setup account belongs to a different installation.");
+            setup = setupName(receipt);
+            require(setup != nil, "The receipt names an unknown setup account.");
         } else {
-            require(!record && !getpwnam("cagesetup"), "A user already has the setup name; no account was modified.");
+            setup = setupName(nil);
+            // Neither name may already belong to someone on a fresh guest.
+            for (NSString *name in @[currentSetup, earlierSetup])
+                require(!users(node, name).firstObject && !getpwnam(name.UTF8String), "A user already has the setup name; no account was modified.");
             int uid = 502;
             while (uid < 1000 && getpwuid(uid)) uid++;
             require(uid < 1000, "No free local setup UID.");
-            receipt = [@{@"installation":install, @"guid":NSUUID.UUID.UUIDString, @"uid":@(uid), @"state":@"creating"} mutableCopy];
+            receipt = [@{@"installation":install, @"guid":NSUUID.UUID.UUIDString, @"uid":@(uid), @"state":@"creating", @"name":setup} mutableCopy];
         }
+        ODRecord *record = users(node, setup).firstObject;
         NSString *ordinaryName = argc == 4 ? @(argv[3]) : receipt[@"user"] ?: @"cage";
         NSRegularExpression *userPattern = [NSRegularExpression regularExpressionWithPattern:@"^[a-z][a-z0-9_]{0,30}$" options:0 error:NULL];
         require([userPattern numberOfMatchesInString:ordinaryName options:0 range:NSMakeRange(0,ordinaryName.length)] == 1 &&
-            ![@[@"root",@"cagesetup",@"cageprovision"] containsObject:ordinaryName], "Invalid ordinary guest username.");
+            ![@[@"root",currentSetup,earlierSetup,@"cageprovision"] containsObject:ordinaryName], "Invalid ordinary guest username.");
         require(!data || [ordinaryName isEqual:receipt[@"user"] ?: @"cage"], "The receipt belongs to another ordinary account.");
         ODRecord *ordinary = users(node, ordinaryName).firstObject;
         require(node && admin && ordinary && !member(admin, ordinary), "The regular Cage user must not be a guest administrator.");
@@ -228,7 +247,7 @@ int main(int argc, const char **argv) {
                 require([phase isEqual:@"creating"] && !getpwuid([receipt[@"uid"] intValue]), "Setup account disappeared or its UID is in use.");
                 record = [node createRecordWithRecordType:kODRecordTypeUsers name:setup attributes:@{
                     kODAttributeTypeGUID:@[receipt[@"guid"]], kODAttributeTypeUniqueID:@[uid],
-                    kODAttributeTypePrimaryGroupID:@[@"20"], kODAttributeTypeFullName:@[@"Cage Setup"],
+                    kODAttributeTypePrimaryGroupID:@[@"20"], kODAttributeTypeFullName:@[[setup isEqual:currentSetup] ? @"VMac Setup" : @"Cage Setup"],
                     kODAttributeTypeNFSHomeDirectory:@[@"/var/empty"], kODAttributeTypeUserShell:@[@"/bin/sh"],
                     @"dsAttrTypeNative:IsHidden":@[@"1"]
                 } error:NULL];

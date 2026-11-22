@@ -114,7 +114,7 @@ func (o Options) Validate() error {
 }
 
 func reserved(u string) bool {
-	for _, s := range strings.Fields("root daemon bin sys sync games man lp mail news uucp proxy www_data backup list irc gnats nobody systemd_network systemd_timesync messagebus sshd pulse polkitd cage cagesetup cageprovision") {
+	for _, s := range strings.Fields("root daemon bin sys sync games man lp mail news uucp proxy www_data backup list irc gnats nobody systemd_network systemd_timesync messagebus sshd pulse polkitd cage cagesetup vmacsetup cageprovision") {
 		if s == u {
 			return true
 		}

@@ -16,7 +16,7 @@ cd /
 provision=$3
 [[ $provision == cageprovision ]] || exit 1
 ordinary=${4:-cage}
-[[ $ordinary =~ ^[a-z][a-z0-9_]{0,30}$ && $ordinary != root && $ordinary != cageprovision && $ordinary != cagesetup ]] || exit 1
+[[ $ordinary =~ ^[a-z][a-z0-9_]{0,30}$ && $ordinary != root && $ordinary != cageprovision && $ordinary != cagesetup && $ordinary != vmacsetup ]] || exit 1
 full_name=$ordinary
 /usr/bin/dscl . -create "/Users/$provision" IsHidden 1
 claim=/var/db/cage-install-$ordinary
