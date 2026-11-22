@@ -18,7 +18,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { EnvironmentShield } from "./environment-shield";
-import logo from "./logo.png";
+import { logo } from "./brand-logo";
 import claudeLogo from "./claude-logo.svg";
 import { projectName } from "./workspace-state.mjs";
 import { WorkspaceTabs } from "./workspace-tabs";

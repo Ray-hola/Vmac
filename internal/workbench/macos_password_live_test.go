@@ -113,7 +113,7 @@ func TestMacSharedPasswordLive(t *testing.T) {
 	}
 	// Both ordinary login and the temporary authorization user accept Cage's
 	// password. SSH still authenticates by key, so this checks password login too.
-	for _, user := range []string{bound.User, "cagesetup"} {
+	for _, user := range []string{bound.User, "vmacsetup"} {
 		cmd = s.macOSSSHCommand(ctx, "-T", "cage-macos", "--", "/usr/bin/dscl /Local/Default -authonly "+user)
 		cmd.Stdin = strings.NewReader(target + "\n")
 		if err = cmd.Run(); err != nil {
