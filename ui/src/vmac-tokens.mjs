@@ -10,6 +10,8 @@ export const tokens = {
     accent: "#3964FE", accentFill: "#3964FE", accentFillHover: "#5686FE", accentText: "#3964FE",
     accentSoft: "#E4EDFD", accentFaint: "#EDF3FE", accentBorder: "#B7C8FE", onAccent: "#FFFFFF",
     ok: "#22C55E", okSoft: "#E6FAED", warn: "#F59E0B", warnText: "#DD8629", bad: "#EC1313", badOnDark: "#F25A5A", toast: "#353638",
+    // Status lights read red, yellow, green: failed, on its way, started.
+    starting: "#EAB308",
   },
 };
 
