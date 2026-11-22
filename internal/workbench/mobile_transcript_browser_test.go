@@ -32,7 +32,7 @@ func TestMobileTranscriptInBrowser(t *testing.T) {
 	if out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=24", "-t", "2", "-c:v", "libx264", "-qp", "0", "-movflags", "+faststart", filepath.Join(project, "demo.mp4")).CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
-	logo, err := os.ReadFile("../../ui/src/logo.png")
+	logo, err := os.ReadFile("../../ui/src/vmac-mark.png")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,7 +19,7 @@ import { api, native, nativeAvailable } from "./api";
 import { setClientContext } from "./client-context.mjs";
 import { Modal } from "./modal";
 import { HostForm } from "./remote-host-form";
-import logo from "./logo.png";
+import { logo } from "./brand-logo";
 import "./remote-hosts.css";
 
 const Navigation = createContext(null);

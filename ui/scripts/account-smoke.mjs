@@ -54,7 +54,7 @@ try {
   await page.getByRole('heading',{name:'键盘习惯',exact:true}).waitFor();
   await groups.getByRole('button',{name:'账户',exact:true}).click();
   await page.getByLabel('用户名',{exact:true}).fill('山雀的工作室');
-  await page.getByLabel('选择头像图片').setInputFiles(fileURLToPath(new URL('../src/logo.png',import.meta.url)));
+  await page.getByLabel('选择头像图片').setInputFiles(fileURLToPath(new URL('../src/vmac-mark.png',import.meta.url)));
   state.failAccountSave=true;
   await page.getByRole('button',{name:'保存资料',exact:true}).click();
   await page.getByRole('alert').filter({hasText:'资料未能保存'}).waitFor();

@@ -1,5 +1,5 @@
 import { shortcut, primaryModifier } from "./platform.mjs";
-import logo from "./logo.png";
+import { logo } from "./brand-logo";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Clock3,

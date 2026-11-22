@@ -1,5 +1,4 @@
-import cageLogo from "./logo.png";
 import vmacMark from "./vmac-mark.png";
 
-// VMac shows its own mark; the shared workbench keeps the Cage logo.
-export const logo = typeof window !== "undefined" && window.cageNativeVMWorkbench ? vmacMark : cageLogo;
+// The one place a page takes VMac's mark from.
+export const logo = vmacMark;
