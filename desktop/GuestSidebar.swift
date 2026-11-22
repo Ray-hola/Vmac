@@ -238,7 +238,7 @@ private final class SidebarMachineCard: NSView {
     private var tracking: NSTrackingArea?
     /// In the rail only the power control is left.
     private var compact = false
-    /// A guest at rest is a pale dot; one on its way is blue, one that is ready green.
+    /// A guest at rest is a pale dot; one on its way is yellow, one that is ready green.
     private var dotColor = CagePalette.caption
     override var isFlipped: Bool { true }
     init(profile: String) {
@@ -284,8 +284,8 @@ private final class SidebarMachineCard: NSView {
         if state.stringValue != text { SidebarMotion.fade(state.layer); state.stringValue = text }
         state.textColor = returning ? CagePalette.accentText : CagePalette.secondary
         state.font = .systemFont(ofSize: SidebarMetrics.small, weight: returning ? .medium : .regular)
-        // Green once the desktop is ready, blue while it is on its way there.
-        dotColor = setup || !(busy || running) ? CagePalette.caption : returning ? CagePalette.ok : CagePalette.accent
+        // Green once the desktop is ready, yellow while it is on its way there.
+        dotColor = setup || !(busy || running) ? CagePalette.caption : returning ? CagePalette.ok : CagePalette.starting
         refreshDot()
         let pulsing = (busy || (running && !ready)) && !setup
         if pulsing, halo.animation(forKey: "pulse") == nil, !SidebarMotion.reduced {
@@ -304,7 +304,8 @@ private final class SidebarMachineCard: NSView {
     private func refreshDot() {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         dot.backgroundColor = dotColor.cgColor
-        halo.backgroundColor = CagePalette.accentSoft.cgColor
+        // The halo only pulses while the dot is yellow; it is that yellow, faint.
+        halo.backgroundColor = CagePalette.starting.withAlphaComponent(0.24).cgColor
         CATransaction.commit()
     }
     private func refreshChrome() {
@@ -356,8 +357,8 @@ private final class SidebarLamp: NSButton {
     /// The dot and the name, side by side.
     var naturalWidth: CGFloat { Self.dot + Self.gap + ceil(label.size().width) }
     func update(_ detail: String, _ state: Int) {
-        // Green when well, blue when working, red when failed, pale when at rest.
-        color = state == 1 ? CagePalette.ok : state == 2 ? CagePalette.accent : state == 4 ? CagePalette.danger : CagePalette.caption
+        // Green when started, yellow while starting, red when failed, pale when at rest.
+        color = state == 1 ? CagePalette.ok : state == 2 ? CagePalette.starting : state == 4 ? CagePalette.danger : CagePalette.caption
         toolTip = "\(name)：\(detail)"; setAccessibilityValue(detail); needsDisplay = true
     }
     override func draw(_ dirtyRect: NSRect) {
@@ -378,6 +379,12 @@ private final class SidebarLamp: NSButton {
     override func mouseExited(with event: NSEvent) { hover = false; needsDisplay = true }
 }
 
+/// Upload and download keep one colour each wherever their arrows appear.
+private enum TrafficColor {
+    static let upload = CagePalette.ok
+    static let download = CagePalette.accent
+}
+
 /// One direction of traffic in the rail: an arrow, the figure and its unit in a ring.
 private final class SidebarSpeedCircle: NSView {
     var upload = true { didSet { updateLabels() } }
@@ -388,7 +395,7 @@ private final class SidebarSpeedCircle: NSView {
     override var isFlipped: Bool { true }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        for (label, size, color) in [(arrow, SidebarMetrics.small, CagePalette.accent),
+        for (label, size, color) in [(arrow, SidebarMetrics.small, TrafficColor.upload),
                                      (speed, SidebarMetrics.small, CagePalette.ink), (unit, SidebarMetrics.small, CagePalette.secondary)] {
             label.alignment = .center
             label.font = CagePalette.mono(size, weight: label === speed ? .medium : .regular)
@@ -415,6 +422,7 @@ private final class SidebarSpeedCircle: NSView {
     private func updateLabels() {
         let parts = speedParts(value)
         arrow.stringValue = upload ? "↑" : "↓"
+        arrow.textColor = upload ? TrafficColor.upload : TrafficColor.download
         speed.stringValue = parts.0
         unit.stringValue = parts.1
     }
@@ -434,23 +442,27 @@ private func byteText(_ value: Double) -> String {
 }
 
 /// Traffic through the proxy, what is left of the quota, and three lamps.
-/// Each figure is a row like the ones on the pages: its name in the label
-/// grey on the left, its value on the right.
+/// One figure leads: what is left of the subscription, at the brand's size,
+/// with its bar; the two speeds share the line under it and the lamps close
+/// the block. A line above separates it from the navigation.
 private final class SidebarTelemetry: NSView {
     /// What there is room for: everything, the lamps alone, or nothing.
     enum Form { case full, lamps, hidden }
     var form = Form.full { didSet { if form != oldValue { needsLayout = true; needsDisplay = true } } }
+    /// Both speeds fit on one line from this sidebar width up; below it they stack.
+    private static func sideBySide(_ width: CGFloat) -> Bool { width >= 188 }
     static func height(width: CGFloat, form: Form) -> CGFloat {
         let rail = width < SidebarMetrics.railBelow
         switch form {
-        case .full: return rail ? 156 : rowHeight * 4 + 46
+        case .full: return rail ? 156 : sideBySide(width) ? 122 : 144
         case .lamps: return rail ? 18 : 24
         case .hidden: return 0
         }
     }
-    private static let rowHeight: CGFloat = 22
     var onSelect: ((String) -> Void)?
-    private var figures = [("上传", "—"), ("下载", "—"), ("已用", "—"), ("余量", "—")]
+    private var up = "— B/s", down = "— B/s", day = "0 B"
+    /// What is left and the used share, when the subscription states a quota.
+    private var quota: (remaining: String, percent: String)?
     private var usedPercent: Double?
     private var compactQuota = "—%"
     private let circles = [SidebarSpeedCircle(), SidebarSpeedCircle()]
@@ -478,9 +490,14 @@ private final class SidebarTelemetry: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
     @objc private func lampPressed(_ sender: NSButton) { if let id = sender.identifier?.rawValue { onSelect?(id) } }
-    func updateStatus(running: Bool,ready: Bool,busy: Bool,network: String,failed: Bool) {
+    func updateStatus(running: Bool,ready: Bool,busy: Bool,network: String,failed: Bool,activity: String) {
         lamps[1].update(failed ? "检查失败" : busy ? "正在检查" : ready ? "已就绪" : "未就绪",failed ? 4 : busy ? 2 : ready ? 1 : 0)
-        lamps[2].update(running ? "运行中" : "已停止",running ? 1 : 0)
+        // Starting, restarting and stopping are all on their way; a guest that
+        // runs but is not yet ready is still starting.
+        let moving = busy && ["start", "restart", "stop"].contains(activity)
+        let machine = moving ? (["start": "正在启动", "restart": "正在重启", "stop": "正在停止"][activity] ?? "") :
+            running ? (ready ? "运行中" : "正在启动") : "已停止"
+        lamps[2].update(machine, moving || (running && !ready) ? 2 : running ? 1 : 0)
         // Proxy health is updated independently by the aggregate counter sampler.
         networkLabel=network;environmentBusy=busy;refreshProxyLamp()
     }
@@ -488,30 +505,35 @@ private final class SidebarTelemetry: NSView {
     private var proxyAvailable=false
     private var environmentBusy=false
     private func refreshProxyLamp() {
-        let open=networkLabel == "外网已放行"
-        lamps[0].update(proxyAvailable ? networkLabel : "核心未连接",proxyAvailable ? (open ? 1 : 2) : (environmentBusy ? 2 : 0))
+        // Open is green; a gate being checked or not yet known is on its way;
+        // a closed gate is at rest. A failed check shows on the environment lamp.
+        let state = !proxyAvailable ? (environmentBusy ? 2 : 0) :
+            networkLabel == "外网已放行" ? 1 : networkLabel == "外网已关闭" ? 0 : 2
+        lamps[0].update(proxyAvailable ? networkLabel : "核心未连接", state)
     }
     func updateTraffic(_ data:[String:Any]) {
         proxyAvailable=data["available"] as? Bool ?? false;refreshProxyLamp()
         let u=(data["upload_rate"] as? NSNumber)?.doubleValue,d=(data["download_rate"] as? NSNumber)?.doubleValue
         let us=speedParts(u),ds=speedParts(d)
-        figures[0].1 = "\(us.0) \(us.1)"; figures[1].1 = "\(ds.0) \(ds.1)"
+        up = "\(us.0) \(us.1)"; down = "\(ds.0) \(ds.1)"
         circles[0].value = u; circles[1].value = d
-        for (circle, text) in zip(circles, ["上传：\(us.0) \(us.1)", "下载：\(ds.0) \(ds.1)"]) { circle.toolTip = text; circle.setAccessibilityLabel(text) }
+        for (circle, text) in zip(circles, ["上传：\(up)", "下载：\(down)"]) { circle.toolTip = text; circle.setAccessibilityLabel(text) }
         let uploaded=(data["upload_24h"] as? NSNumber)?.doubleValue ?? 0,downloaded=(data["download_24h"] as? NSNumber)?.doubleValue ?? 0
+        day = byteText(uploaded+downloaded)
         let quota=data["quota"] as? [String:Any]
         usedPercent=(quota?["used_percent"] as? NSNumber)?.doubleValue
         compactQuota = usedPercent.map { String(format: "%.0f%%", $0) } ?? "—%"
         if let used=(quota?["used"] as? NSNumber)?.doubleValue,let cap=(quota?["total"] as? NSNumber)?.doubleValue,let remaining=(quota?["remaining"] as? NSNumber)?.doubleValue {
-            figures[2] = ("已用", byteText(used))
-            figures[3] = ("余量", byteText(remaining))
+            // Below ten per cent one decimal still says something.
+            let percent = usedPercent.map { String(format: $0 < 10 ? "%.1f%%" : "%.0f%%", $0) } ?? "—%"
+            self.quota = (byteText(remaining), percent)
             toolTip="订阅已用 \(byteText(used)) / \(byteText(cap))\n订阅更新：\(quota?["updated_at"] as? String ?? "未知")\n本地近24小时：↑ \(byteText(uploaded)) · ↓ \(byteText(downloaded))"
+            setAccessibilityValue("订阅余量 \(byteText(remaining))，已用 \(byteText(used))（\(percent)）；上传 \(up)；下载 \(down)")
         } else {
-            figures[2] = ("流量", byteText(uploaded+downloaded))
-            figures[3] = ("余量", "未提供额度")
+            self.quota = nil
             toolTip="订阅未提供额度，余量和已用比例未知。\n流量为本机记录的近24小时累计。"
+            setAccessibilityValue("近 24 小时流量 \(day)，订阅未提供额度；上传 \(up)；下载 \(down)")
         }
-        setAccessibilityValue(figures.map { "\($0.0) \($0.1)" }.joined(separator: "；") + "；\(compactQuota) 已用")
         layoutQuota(animated: true)
         needsDisplay=true
     }
@@ -522,15 +544,16 @@ private final class SidebarTelemetry: NSView {
         return (left, bounds.width - left)
     }
     private var rail: Bool { bounds.width < SidebarMetrics.railBelow }
+    /// Used up beyond this share, the bar and the share turn amber.
+    private var nearlyUsed: Bool { (usedPercent ?? 0) > 85 }
     private func layoutQuota(animated: Bool) {
-        let bar = CGRect(x: edges.left, y: Self.rowHeight * 4 + 6, width: max(0, edges.right - edges.left), height: 4)
+        let bar = CGRect(x: edges.left, y: 58, width: max(0, edges.right - edges.left), height: 4)
         let remaining = usedPercent.map { CGFloat(max(0, min(1, 1 - $0 / 100))) } ?? 0
         let apply = {
             self.track.frame = bar
             self.fill.bounds = CGRect(x: 0, y: 0, width: bar.width * remaining, height: bar.height)
             self.fill.position = bar.origin
-            // Nearly used up: the bar turns amber, and the figures beside it say so.
-            self.fill.backgroundColor = ((self.usedPercent ?? 0) > 85 ? CagePalette.warn : CagePalette.accent).cgColor
+            self.fill.backgroundColor = (self.nearlyUsed ? CagePalette.warn : CagePalette.accent).cgColor
         }
         CATransaction.begin(); CATransaction.setDisableActions(true)
         track.isHidden = rail || form != .full || usedPercent == nil; fill.isHidden = track.isHidden
@@ -566,6 +589,17 @@ private final class SidebarTelemetry: NSView {
         }
         layoutQuota(animated: false)
     }
+    private func text(_ string: String, _ color: NSColor, mono: Bool = false, weight: NSFont.Weight = .regular, size: CGFloat = SidebarMetrics.small) -> NSAttributedString {
+        NSAttributedString(string: string, attributes: [.font: mono ? CagePalette.mono(size, weight: weight) : NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color])
+    }
+    private func put(_ string: NSAttributedString, left x: CGFloat, mid y: CGFloat) { string.draw(at: NSPoint(x: x, y: y - string.size().height / 2)) }
+    private func put(_ string: NSAttributedString, right x: CGFloat, mid y: CGFloat) { string.draw(at: NSPoint(x: x - string.size().width, y: y - string.size().height / 2)) }
+    /// A speed with its direction: the arrow in its direction's colour, the figure in ink.
+    private func speed(upload: Bool) -> NSAttributedString {
+        let string = NSMutableAttributedString(attributedString: text(upload ? "↑ " : "↓ ", upload ? TrafficColor.upload : TrafficColor.download, mono: true, weight: .medium))
+        string.append(text(upload ? up : down, CagePalette.ink, mono: true, weight: .medium))
+        return string
+    }
     override func draw(_ dirtyRect: NSRect) {
         guard form == .full else { return }
         if rail {
@@ -574,13 +608,19 @@ private final class SidebarTelemetry: NSView {
                 .font: CagePalette.mono(SidebarMetrics.small), .foregroundColor: CagePalette.secondary, .paragraphStyle: style])
             return
         }
-        for (i, (name, value)) in figures.enumerated() {
-            let row = NSRect(x: edges.left, y: CGFloat(i) * Self.rowHeight, width: edges.right - edges.left, height: Self.rowHeight)
-            let label = NSAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: SidebarMetrics.small), .foregroundColor: CagePalette.tertiary])
-            let figure = NSAttributedString(string: value, attributes: [.font: CagePalette.mono(SidebarMetrics.small, weight: .medium), .foregroundColor: CagePalette.ink])
-            label.draw(at: NSPoint(x: row.minX, y: row.midY - label.size().height / 2))
-            figure.draw(at: NSPoint(x: max(row.minX + label.size().width + 8, row.maxX - figure.size().width), y: row.midY - figure.size().height / 2))
-        }
+        let left = edges.left, right = edges.right
+        CagePalette.line.setFill()
+        NSRect(x: left, y: 0, width: right - left, height: 1).fill()
+        // What the figure is, and beside it the used share or why there is none.
+        let caption = text(quota == nil ? "近 24 小时流量" : "订阅余量", CagePalette.tertiary)
+        put(caption, left: left, mid: 21)
+        let side = text(quota.map { "已用 \($0.percent)" } ?? "未提供额度", nearlyUsed ? CagePalette.warn : CagePalette.secondary,
+                        mono: quota != nil, weight: nearlyUsed ? .medium : .regular)
+        if left + caption.size().width + 10 + side.size().width <= right { put(side, right: right, mid: 21) }
+        put(text(quota?.remaining ?? day, CagePalette.ink, mono: true, weight: .semibold, size: SidebarMetrics.brand), left: left, mid: 42)
+        put(speed(upload: true), left: left, mid: 81)
+        if Self.sideBySide(bounds.width) { put(speed(upload: false), right: right, mid: 81) }
+        else { put(speed(upload: false), left: left, mid: 103) }
     }
 }
 
@@ -741,7 +781,7 @@ final class CageGuestSidebar: NSView {
     }
     func update(running:Bool,ready:Bool,busy:Bool,networkLabel:String,failed:Bool=false,setup:Bool=false,activity:String="") {
         machine.update(running: running, ready: ready, busy: busy, setup: setup, activity: activity)
-        telemetry.updateStatus(running:running,ready:ready,busy:busy,network:networkLabel,failed:failed)
+        telemetry.updateStatus(running:running,ready:ready,busy:busy,network:networkLabel,failed:failed,activity:activity)
     }
     func updateTraffic(_ data:[String:Any]) { telemetry.updateTraffic(data) }
 }

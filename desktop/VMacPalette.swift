@@ -23,6 +23,8 @@ enum CagePalette {
     static let accentSoft = solid(0xE4EDFD) // token: accentSoft
     static let ok = solid(0x22C55E) // token: ok
     static let warn = solid(0xF59E0B) // token: warn
+    /// The middle light of red, yellow and green: something on its way.
+    static let starting = solid(0xEAB308) // token: starting
     static let danger = solid(0xEC1313) // token: bad
     static let dangerOnDark = solid(0xF25A5A) // token: badOnDark
     static let toast = solid(0x353638) // token: toast
