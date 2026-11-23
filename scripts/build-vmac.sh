@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
     exit 1
 }
 version=$(tr -d '\r\n' < VERSION)
-build=${VMAC_BUILD_NUMBER:-72}
+build=${VMAC_BUILD_NUMBER:-74}
 identity=${VMAC_SIGNING_IDENTITY:--}
 signed_update=false
 if [[ $identity != - ]]; then signed_update=true; fi
